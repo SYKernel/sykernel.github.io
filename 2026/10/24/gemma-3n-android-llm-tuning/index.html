@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="基于 Google 官方 LiteRT-LM 基准与公开第一手实测，拆解 Gemma 3n 在 Android 端侧的性能数据（prefill&#x2F;decode&#x2F;TTFT）、MatFormer 与 PLE 内存优化、CPU&#x2F;GPU&#x2F;NPU 加速路径的收益与坑，以及功耗与发热控制，给出可复现的调优清单。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="端侧大模型实测：Gemma 3n 在 Android 上的性能、内存与功耗调优">
+<meta property="og:url" content="https://blog.shuying.me/2026/10/24/gemma-3n-android-llm-tuning/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="基于 Google 官方 LiteRT-LM 基准与公开第一手实测，拆解 Gemma 3n 在 Android 端侧的性能数据（prefill&#x2F;decode&#x2F;TTFT）、MatFormer 与 PLE 内存优化、CPU&#x2F;GPU&#x2F;NPU 加速路径的收益与坑，以及功耗与发热控制，给出可复现的调优清单。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/gemma-3n-android-llm-tuning-cover.png">
+<meta property="article:published_time" content="2026-10-24T07:30:00.000Z">
+<meta property="article:modified_time" content="2026-10-23T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="端侧 AI">
+<meta property="article:tag" content="LiteRT">
+<meta property="article:tag" content="Gemma 3n">
+<meta property="article:tag" content="NPU">
+<meta property="article:tag" content="性能优化">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/gemma-3n-android-llm-tuning-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/10/24/gemma-3n-android-llm-tuning/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>端侧大模型实测：Gemma 3n 在 Android 上的性能、内存与功耗调优 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/10/24/gemma-3n-android-llm-tuning/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          端侧大模型实测：Gemma 3n 在 Android 上的性能、内存与功耗调优
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-10-24 15:30:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-10-24T15:30:00+08:00">2026-10-24</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">基于 Google 官方 LiteRT-LM 基准与公开第一手实测，拆解 Gemma 3n 在 Android 端侧的性能数据（prefill/decode/TTFT）、MatFormer 与 PLE 内存优化、CPU/GPU/NPU 加速路径的收益与坑，以及功耗与发热控制，给出可复现的调优清单。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/gemma-3n-android-llm-tuning-cover.png" itemprop="contentUrl">
+        </div>
+        <p><a href="https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/">上一篇 AI Edge Gallery 架构解析</a>解决了”怎么跑起来”的问题：三层技术栈、模型管理、Function Calling、MCP 集成，每层都有完整源码可复刻。但”能跑起来”和”跑得好”之间还隔着三个工程问题——<strong>推理速度够不够用户容忍、内存占用会不会挤压业务进程、连续推理半小时发热降频之后还剩多少可用</strong>。这三个问题在 demo 阶段往往被回避，一旦进产品就是阻塞项。</p>
+<p>本文聚焦”跑得好”这一半：以 Gemma 3n 为对象，把 Google 官方 LiteRT-LM 基准、Hugging Face 模型卡、GitHub 第一手 field report 和学术界的能效实测汇编成一份带完整环境标签的调优指南。需要说明的是，本文数据来自官方基准与公开的一手实测（设备、量化格式、上下文长度均逐一标注），本文自己的贡献是把散落各处的数据收拢、交叉验证，并提炼出可落地的调优清单——这符合端侧测试报告的第一原则：<strong>不带环境标签的性能数字没有意义</strong>。</p>
+<blockquote><p><strong>Key Takeaways</strong></p><ul>
+<li>Gemma 3n E2B 在 Samsung S24 Ultra 上 GPU prefill 816 tok/s（CPU 的 7.4 倍），但 decode GPU 与 CPU 持平（16 tok/s）——decode 是内存带宽瓶颈，"换加速器"主要提速长 prompt，几乎不提速生成。</li>
+<li>NPU 是能效最优解：ASPLOS 2025 实测 NPU prefill 能耗比 CPU 低 35–59 倍；S24 Ultra 持续推理实测 146.4 mJ/token 约合满电池 42.6 万 token。Gemma3-1B 在 S25 Ultra NPU 上 prefill 5,836 tok/s、decode 85 tok/s，常驻内存为三种路径最低（较 CPU/GPU 路径低约四成，跨设备口径）。</li>
+<li>GPU 路径有精度坑：Mali-G715 上 fp16 累加缺陷会让 3k token 上下文中的数字静默损坏，短 prompt 冒烟测试测不出来；<code>q4_block128</code> 变体在 GPU 上还会静默输出零 token。</li>
+<li>MatFormer + PLE 让 E2B 用 1.91B 有效参数跑出 5B 总参模型的质量，但换来的是 2,965 MB 的模型文件——"有效参数 2B"约束的是加速器内存，不是磁盘。</li>
+<li>Gemma 4 已发布并在官方基准中取代 3n 成为 featured model（S26 Ultra GPU decode 52 tok/s、TTFT 0.3 s），但 3n 仍是学习端侧调优方法的最佳教材。</li>
+</ul></blockquote>
+
+<h2 id="先把指标说清楚：prefill、decode-和-TTFT-不是一回事"><a href="#先把指标说清楚：prefill、decode-和-TTFT-不是一回事" class="headerlink" title="先把指标说清楚：prefill、decode 和 TTFT 不是一回事"></a>先把指标说清楚：prefill、decode 和 TTFT 不是一回事</h2><p>LLM 推理分两个阶段，两者的瓶颈完全不同，混着谈”快慢”是端侧选型最常见的错误。</p>
+<p><strong>Prefill（预填充）</strong>处理用户输入的整个 prompt，逐 token 并行计算，是 compute-bound（算力瓶颈）——矩阵乘法占主导，算力越强的加速器收益越大。<strong>Decode（解码）</strong>逐 token 自回归生成，每生成一个 token 都要读一遍全部权重和 KV Cache，是 memory-bound（带宽瓶颈）——瓶颈在内存带宽而非算力。这解释了官方数据里最反直觉的一组数字：Gemma 3n E2B 在 S24 Ultra 上，GPU 把 prefill 从 111 tok&#x2F;s 拉到 816 tok&#x2F;s（7.4 倍），但 decode 纹丝不动地停在 16 tok&#x2F;s。加速器再快，也快不过内存搬运权重的那条总线。</p>
+<p><strong>TTFT（Time To First Token）</strong>近似等于 prefill 时间加调度开销，决定用户按下发送后看到第一个字的等待感。Decode tok&#x2F;s 决定后续文字”打字机”的观感——<a target="_blank" rel="noopener" href="https://www.qualcomm.com/developer/blog/2026/04/llama-models-acceleration-on-cpu-qmx">Qualcomm 的工程博客</a>提醒过，人类阅读速度约 4–7 tok&#x2F;s，语音场景更低，所以 decode 并不是越快越好，能效（每 token 耗电）在多数场景比峰值速度更重要。</p>
+<p>本文所有数据遵循同一套口径：prefill&#x2F;decode 单位为 tok&#x2F;s，内存为进程 RSS，均标注设备与量化格式。</p>
+<h2 id="官方基准：Gemma-3n-在旗舰机上的完整成绩单"><a href="#官方基准：Gemma-3n-在旗舰机上的完整成绩单" class="headerlink" title="官方基准：Gemma 3n 在旗舰机上的完整成绩单"></a>官方基准：Gemma 3n 在旗舰机上的完整成绩单</h2><p>Google 在 <a target="_blank" rel="noopener" href="https://developers.google.com/edge/litert-lm/overview">LiteRT-LM 官方文档</a>（2026-09-04 更新）给出的基准表，是目前最完整的 Gemma 3n Android 数据，模型均为 <code>.litertlm</code> 格式（<a target="_blank" rel="noopener" href="https://hf.co/google/gemma-3n-E2B-it-litert-lm">Gemma-3n-E2B 模型卡</a>、<a target="_blank" rel="noopener" href="https://hf.co/google/gemma-3n-E4B-it-litert-lm">Gemma-3n-E4B 模型卡</a>）：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>文件大小</th>
+<th>设备</th>
+<th>Backend</th>
+<th>Prefill (tk&#x2F;s)</th>
+<th>Decode (tk&#x2F;s)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Gemma-3n-E2B</td>
+<td>2,965 MB</td>
+<td>Samsung S24 Ultra</td>
+<td>CPU</td>
+<td>111</td>
+<td>16</td>
+</tr>
+<tr>
+<td>Gemma-3n-E2B</td>
+<td>2,965 MB</td>
+<td>Samsung S24 Ultra</td>
+<td>GPU</td>
+<td>816</td>
+<td>16</td>
+</tr>
+<tr>
+<td>Gemma-3n-E4B</td>
+<td>4,235 MB</td>
+<td>Samsung S24 Ultra</td>
+<td>CPU</td>
+<td>74</td>
+<td>9</td>
+</tr>
+<tr>
+<td>Gemma-3n-E4B</td>
+<td>4,235 MB</td>
+<td>Samsung S24 Ultra</td>
+<td>GPU</td>
+<td>548</td>
+<td>9</td>
+</tr>
+<tr>
+<td>Gemma-3n-E2B</td>
+<td>2,965 MB</td>
+<td>MacBook Pro M3</td>
+<td>CPU</td>
+<td>233</td>
+<td>28</td>
+</tr>
+</tbody></table>
+<p>把这张表画出来，”prefill 有 GPU 巨大红利、decode 两者持平”的结构一目了然：</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" style="max-width:100%;height:auto;" role="img" aria-label="Gemma 3n E2B 与 E4B 在 Samsung S24 Ultra 上的 CPU 与 GPU 推理性能对比，prefill 与 decode 分组柱状图">
+  <title>Gemma 3n 在 S24 Ultra 上的 CPU/GPU 性能对比</title>
+  <desc>数据来源 Google LiteRT-LM 官方基准（2026-09-04 更新）：E2B prefill CPU 111、GPU 816 tok/s；E2B decode CPU 16、GPU 16 tok/s；E4B prefill CPU 74、GPU 548 tok/s；E4B decode CPU 9、GPU 9 tok/s。GPU 对 prefill 提升约 7.4 倍，对 decode 无提升。</desc>
+  <rect x="0" y="0" width="860" height="460" fill="#0d1117" rx="10"></rect>
+  <!-- 坐标轴 -->
+  <line x1="70" y1="380" x2="810" y2="380" stroke="#374151" stroke-width="1.5"></line>
+  <line x1="70" y1="60" x2="70" y2="380" stroke="#374151" stroke-width="1.5"></line>
+  <!-- 纵轴刻度：0-850 tok/s，0.35 px 每 tok/s -->
+  <text x="60" y="384" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="end">0</text>
+  <text x="60" y="314" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="end">200</text>
+  <text x="60" y="244" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="end">400</text>
+  <text x="60" y="174" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="end">600</text>
+  <text x="60" y="104" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="end">800</text>
+  <line x1="70" y1="310" x2="810" y2="310" stroke="#1f2937" stroke-width="0.5" stroke-dasharray="4 4"></line>
+  <line x1="70" y1="240" x2="810" y2="240" stroke="#1f2937" stroke-width="0.5" stroke-dasharray="4 4"></line>
+  <line x1="70" y1="170" x2="810" y2="170" stroke="#1f2937" stroke-width="0.5" stroke-dasharray="4 4"></line>
+  <line x1="70" y1="100" x2="810" y2="100" stroke="#1f2937" stroke-width="0.5" stroke-dasharray="4 4"></line>
+  <!-- E2B prefill：CPU 111 → 高 38.9；GPU 816 → 高 285.6 -->
+  <rect x="120" y="341.1" width="52" height="38.9" fill="#4285f4"></rect>
+  <rect x="182" y="94.4" width="52" height="285.6" fill="#00d4aa"></rect>
+  <text x="146" y="335" font-family="monospace" font-size="12" fill="#4285f4" text-anchor="middle">111</text>
+  <text x="208" y="88" font-family="monospace" font-size="12" fill="#00d4aa" text-anchor="middle">816</text>
+  <!-- E2B decode：CPU 16 → 高 5.6；GPU 16 → 高 5.6 -->
+  <rect x="380" y="374.4" width="52" height="5.6" fill="#4285f4"></rect>
+  <rect x="442" y="374.4" width="52" height="5.6" fill="#00d4aa"></rect>
+  <text x="406" y="368" font-family="monospace" font-size="12" fill="#4285f4" text-anchor="middle">16</text>
+  <text x="468" y="368" font-family="monospace" font-size="12" fill="#00d4aa" text-anchor="middle">16</text>
+  <!-- E4B prefill：CPU 74 → 高 25.9；GPU 548 → 高 191.8 -->
+  <rect x="620" y="354.1" width="52" height="25.9" fill="#4285f4"></rect>
+  <rect x="682" y="188.2" width="52" height="191.8" fill="#00d4aa"></rect>
+  <text x="646" y="348" font-family="monospace" font-size="12" fill="#4285f4" text-anchor="middle">74</text>
+  <text x="708" y="182" font-family="monospace" font-size="12" fill="#00d4aa" text-anchor="middle">548</text>
+  <!-- E4B decode：CPU 9 / GPU 9，柱体过小省略，见表格 -->
+  <!-- 组标签 -->
+  <text x="177" y="402" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle">E2B · Prefill</text>
+  <text x="437" y="402" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle">E2B · Decode</text>
+  <text x="677" y="402" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle">E4B · Prefill</text>
+  <!-- 图例 -->
+  <rect x="640" y="70" width="14" height="14" fill="#4285f4" rx="2"></rect>
+  <text x="662" y="82" font-family="sans-serif" font-size="13" fill="#e5e7eb">CPU</text>
+  <rect x="710" y="70" width="14" height="14" fill="#00d4aa" rx="2"></rect>
+  <text x="732" y="82" font-family="sans-serif" font-size="13" fill="#e5e7eb">GPU</text>
+  <!-- 注释 -->
+  <text x="380" y="150" font-family="sans-serif" font-size="13" fill="#fbbf24" text-anchor="middle">Prefill 提升约 7.4×</text>
+  <line x1="240" y1="160" x2="300" y2="150" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3 3"></line>
+  <text x="437" y="130" font-family="sans-serif" font-size="13" fill="#f59e0b" text-anchor="middle">Decode 两种 backend 持平（E4B 均为 9，柱体过小省略）</text>
+  <text x="440" y="440" font-family="sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">单位：tok/s · 设备：Samsung S24 Ultra · 模型：.litertlm 格式</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">Gemma 3n 在 S24 Ultra 上的 CPU/GPU 对比。数据来源：Google LiteRT-LM 官方基准表（2026-09-04 更新）；E4B decode 为 9 tok/s，柱体过小省略，精确值见表格</figcaption>
+</figure>
+
+<p>三个可以直接读出的结论：</p>
+<ol>
+<li><strong>E2B 是旗舰机型的甜点档</strong>。S24 Ultra CPU 路径 16 tok&#x2F;s 的 decode 已接近”阅读舒适”的下限（Qualcomm 引用的 4–7 tok&#x2F;s 是静读速度，交互式对话观感上 10+ tok&#x2F;s 才不显得卡顿）；配合 GPU 的 816 tok&#x2F;s prefill，2,000 token 的长 prompt 首字约 2.5 秒（2,000 ÷ 816 ≈ 2.45 秒，加调度开销）。</li>
+<li><strong>E4B 的 decode 跌到 9 tok&#x2F;s</strong>，交互观感明显劣化。除非业务需要 E4B 的质量增益（E4B 在 LMArena 超过 1300 分，是首个 10B 以下达到该水平的模型，<a target="_blank" rel="noopener" href="https://developers.googleblog.com/en/introducing-gemma-3n-developer-guide">Google 开发者博客</a>，2025-06），否则优先 E2B。</li>
+<li><strong>prefill 与 decode 的差距决定了优化的抓手</strong>：如果你的产品是”长 prompt、短回答”（文档摘要、翻译、RAG），GPU 加速收益巨大；如果是”短 prompt、长回答”（闲聊、写作流），换加速器没用，要动模型量化与内存布局（下文展开）。</li>
+</ol>
+<h2 id="硬件加速路径：CPU、GPU、NPU-各自的收益与坑"><a href="#硬件加速路径：CPU、GPU、NPU-各自的收益与坑" class="headerlink" title="硬件加速路径：CPU、GPU、NPU 各自的收益与坑"></a>硬件加速路径：CPU、GPU、NPU 各自的收益与坑</h2><h3 id="GPU：prefill-红利明确，但有两个已知的坑"><a href="#GPU：prefill-红利明确，但有两个已知的坑" class="headerlink" title="GPU：prefill 红利明确，但有两个已知的坑"></a>GPU：prefill 红利明确，但有两个已知的坑</h3><p>MediaPipe LLM Inference API（读 <code>.task</code> 格式）与 LiteRT-LM（读 <code>.litertlm</code> 格式）都支持 GPU backend。MediaPipe 侧的配置在官方 sample 中核心就是 <code>preferredBackend</code> 一行：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">val</span> options = LlmInference.LlmInferenceOptions.builder()</span><br><span class="line">    .setModelPath(<span class="string">&quot;/data/local/tmp/gemma-3n-E2B-it-int4.task&quot;</span>)</span><br><span class="line">    .setPreferredBackend(<span class="string">&quot;gpu&quot;</span>)   <span class="comment">// &quot;cpu&quot; 或 &quot;gpu&quot;</span></span><br><span class="line">    .setMaxTokens(<span class="number">2048</span>)</span><br><span class="line">    .build()</span><br><span class="line"><span class="keyword">val</span> llm = LlmInference.createFromOptions(context, options)</span><br></pre></td></tr></table></figure>
+
+<p>但 GPU 路径有两个社区已经踩实、官方文档尚未醒目标注的坑。其一来自 Pixel 9 Pro（Mali-G715）上一位开发者的系统性 field report（<a target="_blank" rel="noopener" href="https://github.com/google-ai-edge/LiteRT-LM/issues/2202">google-ai-edge&#x2F;LiteRT-LM #2202</a>，2026-10）：<strong>GPU backend 在约 3k token 上下文时出现数字静默损坏</strong>——短 prompt 下日期、价格、电话号码逐位正确，同一 prompt 前面拼上 3k token 的无关内容后，输出变成 <code>am2.0.2226 um13:3 Uhr … Telefon +4 1 553388</code> 这样的残缺串。该问题在 MediaPipe 与 LiteRT-LM 两条 GPU 路径均能复现，指向共享 GPU kernel 的 fp16 累加精度缺陷；CPU backend 在约 40 次长生成测试中零复现。更隐蔽的是 <strong><code>q4_block128</code> 量化的 <code>.task</code> 变体在 GPU 上会静默输出零 token</strong>（CPU 正常）——没有报错，只有一个空转的推理循环。</p>
+<p>这两条经验对测试策略有直接指导意义：<strong>GPU 路径的验收必须用接近真实业务长度的长 prompt 跑数字抽取类任务</strong>（回显日期、金额、编号），只跑 50 token 短句冒烟测试会把问题放过去——“验收用例如何按有效性分层”这个问题，此前讨论 <a href="https://blog.shuying.me/2026/09/05/2026-09-05-ai-unit-test-pyramid/">AI 单元测试金字塔</a>时出现过同款教训。</p>
+<p>其二，选择 GPU 初始化要做降级兜底。GPU delegate 在不同 GPU 驱动上的兼容性差异远大于 CPU 路径，直接指定 <code>preferredBackend(&quot;gpu&quot;)</code> 而不捕获初始化异常，会在部分机型上直接 crash。</p>
+<h3 id="NPU：速度与能效的双冠王，代价是兼容性矩阵"><a href="#NPU：速度与能效的双冠王，代价是兼容性矩阵" class="headerlink" title="NPU：速度与能效的双冠王，代价是兼容性矩阵"></a>NPU：速度与能效的双冠王，代价是兼容性矩阵</h3><p>NPU 数据来自 <a target="_blank" rel="noopener" href="https://hf.co/litert-community/Gemma3-1B-IT">Gemma3-1B 模型卡</a>：CPU&#x2F;GPU 行在 Samsung S24 Ultra 上测得（dynamic_int4 QAT，上下文 2,048），NPU 行在 Samsung S25 Ultra 上测得（a16w4 QAT，128 token prefill chunk &#x2F; 1,024 tokens）——NPU 数字来自更新一年的机型，跨设备对比只作量级参考：</p>
+<table>
+<thead>
+<tr>
+<th>Backend</th>
+<th>设备</th>
+<th>Prefill (tk&#x2F;s)</th>
+<th>Decode (tk&#x2F;s)</th>
+<th>常驻内存 (RSS)</th>
+<th>模型文件</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CPU（int4 QAT）</td>
+<td>S24 Ultra</td>
+<td>379</td>
+<td>55</td>
+<td>1,009 MB</td>
+<td>529 MB</td>
+</tr>
+<tr>
+<td>GPU（int4 QAT）</td>
+<td>S24 Ultra</td>
+<td>2,531</td>
+<td>49</td>
+<td>1,205 MB</td>
+<td>529 MB</td>
+</tr>
+<tr>
+<td>NPU（a16w4 QAT）</td>
+<td>S25 Ultra</td>
+<td>5,836</td>
+<td>85</td>
+<td>626 MB</td>
+<td>689 MB</td>
+</tr>
+</tbody></table>
+<p>同一模型上，NPU 的 prefill 比 GPU 快 2.3 倍、比 CPU 快 15 倍，decode 也首次显著拉开（85 vs 49 tok&#x2F;s），626 MB 的常驻内存是三种路径中最低的（较 S24 Ultra 上的 CPU&#x2F;GPU 路径低约 38%–48%，注意跨设备口径）。这不是孤例：学术界在 Redmi K60 Pro 上的系统实测（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2407.05858">llm.npu，ASPLOS 2025</a>）显示，1,024 token prompt 下 NPU prefill 超过 1,000 tok&#x2F;s，能耗比 CPU 低 35–59 倍、比 MLC-GPU 低同样量级、比 TFLite-GPU 低 1.9–4.3 倍。Hexagon NPU 以 500–750 MHz 的低频运行是能效优势的直接原因——CPU 满频全核跑 prefill 时功耗最高，NPU 反而最低。</p>
+<p>需要说明文件大小口径：上表的 529&#x2F;689 MB 是模型卡中 int4&#x2F;a16w4 量化文件的标注大小；下文横评表中的 1,005 MB 是 LiteRT-LM 官方 <code>.litertlm</code> 适配版，两者不是同一文件，不构成矛盾。</p>
+<p>把能耗折算成”一块电池能写多少字”更直观：S24 Ultra 上 Gemma 类模型持续推理实测为 146.4 mJ&#x2F;token（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2603.23640">arXiv:2603.23640</a>，熄屏、BatteryManager 口径，未限定单一 backend、作者标注为参考值，作量级参照）。按一块 4,500 mAh × 3.85 V ≈ 62,370 J 的典型旗舰电池估算，这一能效水平约合满电池 42.6 万个 decode token，即每 1% 电量约 4,260 tokens。对需要长时间语音助手&#x2F;离线 Agent 的产品，这个数字直接决定产品形态是否成立。</p>
+<p>那为什么 LiteRT-LM 官方基准表里 Gemma 3n 没有 NPU 数据？兼容性。NPU backend 依赖厂商 NPU SDK（高通 QNN、联发科 NeuroPilot），量化格式、算子覆盖、驱动版本任何一个不匹配都会失败。#2202 field report 还记录了一个更迷惑的现象：<code>engine_create(backend=npu)</code> 初始化失败后约 190 秒，执行<strong>静默 fallback 到 GPU</strong>（日志先出现 <code>backend=npu</code> create，随后是 <code>backend=gpu</code> create）——你以为在测 NPU，实际在测 GPU。工程结论：<strong>NPU 路径必须显式校验运行时 backend，并在不支持机型上干净地降级，而不是依赖隐式 fallback</strong>。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 270" style="max-width:100%;height:auto;" role="img" aria-label="Gemma3-1B 在三种 backend 上的 decode 速度对比条形图">
+  <title>Gemma3-1B 三种 backend 的 decode 速度</title>
+  <desc>decode 速度：NPU 85 tok/s（S25 Ultra）、CPU 55 tok/s（S24 Ultra）、GPU 49 tok/s（S24 Ultra）。NPU 同时具备最快 decode 与最低常驻内存（626 MB，见正文表）。</desc>
+  <rect x="0" y="0" width="860" height="270" fill="#0d1117" rx="10"></rect>
+  <!-- decode 部分 -->
+  <text x="40" y="60" font-family="sans-serif" font-size="15" fill="#e5e7eb" font-weight="bold">Decode 速度（tok/s）</text>
+  <!-- CPU 55 → 宽度 259 -->
+  <rect x="40" y="80" width="259" height="34" fill="#4285f4" rx="4"></rect>
+  <text x="309" y="102" font-family="monospace" font-size="13" fill="#4285f4">55 · CPU（S24 Ultra, int4 QAT）</text>
+  <!-- GPU 49 → 231 -->
+  <rect x="40" y="124" width="231" height="34" fill="#a78bfa" rx="4"></rect>
+  <text x="281" y="146" font-family="monospace" font-size="13" fill="#a78bfa">49 · GPU（S24 Ultra, int4 QAT）</text>
+  <!-- NPU 85 → 400 -->
+  <rect x="40" y="168" width="400" height="34" fill="#00d4aa" rx="4"></rect>
+  <text x="450" y="190" font-family="monospace" font-size="13" fill="#00d4aa">85 · NPU（S25 Ultra, a16w4 QAT）</text>
+  <text x="430" y="245" font-family="sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">来源：Gemma3-1B 模型卡（CPU/GPU 为 S24 Ultra，NPU 为 S25 Ultra）· 能效对比见正文（arXiv 实测数据）</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">Gemma3-1B 三种 backend 的 decode 速度对比：NPU 领先且常驻内存最低，代价是机型兼容性矩阵与显式校验成本。速度与内存的 CPU/GPU/NPU 行分别来自 S24 Ultra 与 S25 Ultra（图内已标注），跨设备对比只作量级参考</figcaption>
+</figure>
+
+<h3 id="一个反直觉的补充：GPU-不总是比-CPU-快"><a href="#一个反直觉的补充：GPU-不总是比-CPU-快" class="headerlink" title="一个反直觉的补充：GPU 不总是比 CPU 快"></a>一个反直觉的补充：GPU 不总是比 CPU 快</h3><p>Commencis 团队在 Gemma 3n 多模态原型中的实测（<a target="_blank" rel="noopener" href="https://medium.com/commencis/on-device-ai-with-gemma-3n-on-android-offline-inference-prototype-2a17a44d1c90">Medium 工程博客</a>，2025）值得注意：**冷启动场景下 CPU 推理反而比 GPU 稳定快约 20%**。GPU delegate 初始化涉及 shader 编译与内存布局，首 token 延迟被放大。他们的对策是把模型初始化提前到 <code>Application.onCreate</code> 常驻内存——这比纠结 backend 更有效。如果你的应用是”用户点开就要答”的形态，初始化时机与预热比 backend 选型对 TTFT 的影响更大。</p>
+<h2 id="内存调优：MatFormer-与-PLE-的真实含义"><a href="#内存调优：MatFormer-与-PLE-的真实含义" class="headerlink" title="内存调优：MatFormer 与 PLE 的真实含义"></a>内存调优：MatFormer 与 PLE 的真实含义</h2><p>Gemma 3n 最核心的端侧创新是让”总参数 5B”的模型以”有效参数 1.91B”运行（<a target="_blank" rel="noopener" href="https://ai.google.dev/gemma/docs/gemma-3n">Gemma 3n 官方文档</a>），靠的是两件事：</p>
+<p><strong>MatFormer（Matryoshka Transformer）</strong>：E4B 模型内部嵌套着完整联合训练的 E2B 子模型（E4B 为 35 层、16,384 FFN 维度；E2B 为 30 层、8,192 维度）。推理时只激活子模型，外层参数不参与计算。嵌套结构还允许在 2B–4B 之间拼装任意中间尺寸。</p>
+<p><strong>Per-Layer Embeddings（PLE）</strong>：每层 transformers 的 embedding 参数不在推理时驻留加速器内存，而是常驻 CPU 内存按需流式供给。结果是加速器（GPU&#x2F;NPU）侧只加载约 2B&#x2F;4B 的核心权重，低速大内存充当”外存”。</p>
+<p>这个设计的收益在数字上很清晰，但有一个容易误读的点：<strong>PLE 约束的是加速器内存，不是磁盘，也不是进程 RSS</strong>。E2B 的 <code>.litertlm</code> 文件仍是 2,965 MB——PLE 省的是”必须放进 GPU&#x2F;NPU 有限显存池”的部分，模型文件本体、KV Cache、运行时 buffer 都还在进程账单里。2GB RAM 的设备跑 E2B 是官方给的最低配置，但那是理论下限；工程上要给系统、业务进程、KV Cache 留余量，实践建议 6–8 GB RAM 起步。</p>
+<p>量化格式是另一层内存杠杆，但选择时要把”文件更小”和”GPU 兼容”放在一起权衡：</p>
+<table>
+<thead>
+<tr>
+<th>量化</th>
+<th>典型文件大小</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>dynamic_int4 QAT（.litertlm &#x2F; .task）</td>
+<td>Gemma3-1B 529 MB</td>
+<td>量化感知训练，官方默认推荐，CPU&#x2F;GPU 均正常</td>
+</tr>
+<tr>
+<td>q4_block128（.task）</td>
+<td>更小</td>
+<td><strong>GPU 上静默零输出（#2202）</strong>，仅 CPU 可用</td>
+</tr>
+<tr>
+<td>a16w4 QAT</td>
+<td>Gemma3-1B 689 MB</td>
+<td>NPU 路径专用（S25 Ultra 实测 85 tok&#x2F;s decode）</td>
+</tr>
+</tbody></table>
+<h2 id="功耗与发热：多数场景该优化的是”每-token-焦耳”而不是”tok-x2F-s”"><a href="#功耗与发热：多数场景该优化的是”每-token-焦耳”而不是”tok-x2F-s”" class="headerlink" title="功耗与发热：多数场景该优化的是”每 token 焦耳”而不是”tok&#x2F;s”"></a>功耗与发热：多数场景该优化的是”每 token 焦耳”而不是”tok&#x2F;s”</h2><p>Decode 是带宽瓶颈这一性质，决定了功耗优化的杠杆点与性能优化不同。学术界的能效研究给出了三个可复现的结论：</p>
+<p>其一，<strong>NPU 低频运行是能效基础</strong>。llm.npu 的实测显示 NPU 在 500–750 MHz 下功耗最低而 prefill 反而最快（前文 35–59 倍能耗数据）；S24 Ultra 上 Gemma 类模型的持续推理实测为 146.4 mJ&#x2F;token（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2603.23640">arXiv:2603.23640</a>，BatteryManager 测量、熄屏条件，作者标注为参考值）。</p>
+<p>其二，<strong>decode 场景可以主动降频</strong>。<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2606.23001">EnerInfer 研究</a>（Qwen2-1.5B 4-bit）显示：NPU 与内存 governor 默认跑满频率追求峰值 tok&#x2F;s，而把频率降下来可减少 44% 功耗、同时保持 10 tok&#x2F;s 以上——语音助手场景人类语速远低于此（讲 &lt;3 词&#x2F;s、听 &lt;5.3 词&#x2F;s），峰值吞吐纯属浪费。按场景限频而不是默认满频，能效可再提 38%–62%。</p>
+<p>其三，<strong>热降频是端侧特有的性能悬崖</strong>。持续推理 30 分钟量级后，SoC 降频会显著压缩吞吐并放大波动——<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2603.23640">arXiv:2603.23640</a> 的 S24 Ultra 持续负载实测记录了同趋势：GPU 频率从 1,000 MHz 降至平均 804 MHz，吞吐方差随之扩大（其 20 轮迭代累计耗电 7%）。发布前的压测必须覆盖”满电+室温”之外的持续热态，这正是把”每 token 毫焦”纳入观测的理由。</p>
+<p>工程上可执行的功耗清单：</p>
+<ul>
+<li>语音助手、离线翻译等”输出速率有人类上限”的场景，给 decode 设目标 tok&#x2F;s（10–15 即可），用限频换能效；</li>
+<li>prefill 是高功耗脉冲，长 prompt 应分块（NPU 路径的 128 token prefill chunk 就是这个思路），避免单次大块触发过热；</li>
+<li>推理密集期用 <code>BatteryManager</code> 记录电压×电流做回归基线，把”每 token 毫焦”纳入 CI 观测指标。</li>
+</ul>
+<h2 id="Gemma-3n-还是-Qwen？同框架下的横向对比"><a href="#Gemma-3n-还是-Qwen？同框架下的横向对比" class="headerlink" title="Gemma 3n 还是 Qwen？同框架下的横向对比"></a>Gemma 3n 还是 Qwen？同框架下的横向对比</h2><p>“模型质量”不在本文范围，但<strong>同一推理框架下的速度对比</strong>数据是现成的，对选型有直接参考价值。仍取 LiteRT-LM 官方基准（均为 <code>.litertlm</code> 格式、官方适配的量化）：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>文件大小</th>
+<th>设备</th>
+<th>CPU Prefill&#x2F;Decode</th>
+<th>GPU Prefill&#x2F;Decode</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Gemma-3n-E2B</td>
+<td>2,965 MB</td>
+<td>S24 Ultra</td>
+<td>111 &#x2F; 16</td>
+<td>816 &#x2F; 16</td>
+</tr>
+<tr>
+<td>Gemma3-1B</td>
+<td>1,005 MB</td>
+<td>S24 Ultra</td>
+<td>177 &#x2F; 33</td>
+<td>1,191 &#x2F; 24</td>
+</tr>
+<tr>
+<td>Qwen2.5-1.5B</td>
+<td>1,598 MB</td>
+<td>S25 Ultra</td>
+<td>298 &#x2F; 34</td>
+<td>1,668 &#x2F; 31</td>
+</tr>
+<tr>
+<td>Qwen3-0.6B</td>
+<td>586 MB</td>
+<td>Vivo X300 Pro</td>
+<td>165 &#x2F; 9</td>
+<td>580 &#x2F; 21</td>
+</tr>
+<tr>
+<td>Qwen2.5-0.5B</td>
+<td>521 MB</td>
+<td>S24 Ultra</td>
+<td>251 &#x2F; 30</td>
+<td>—</td>
+</tr>
+<tr>
+<td>phi-4-mini (3.8B)</td>
+<td>3,906 MB</td>
+<td>S24 Ultra</td>
+<td>67 &#x2F; 7</td>
+<td>314 &#x2F; 10</td>
+</tr>
+</tbody></table>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 470" style="max-width:100%;height:auto;" role="img" aria-label="Gemma3-1B、Qwen2.5-1.5B、Qwen3-0.6B、Gemma-3n-E2B、phi-4-mini 在 Samsung 旗舰机上的 GPU decode 速度横向条形图">
+  <title>同框架下的 GPU decode 速度横评</title>
+  <desc>GPU decode tok/s：Qwen2.5-1.5B 31（S25 Ultra）、Gemma3-1B 24（S24 Ultra）、Qwen3-0.6B 21（Vivo X300 Pro）、Gemma-3n-E2B 16（S24 Ultra）、phi-4-mini 10（S24 Ultra）。Qwen2.5-1.5B 文件体积约为 Gemma 3n E2B 的 54%，decode 达到其 1.9 倍。</desc>
+  <rect x="0" y="0" width="860" height="470" fill="#0d1117" rx="10"></rect>
+  <!-- Qwen2.5-1.5B 31 → 宽 560 -->
+  <rect x="230" y="80" width="560" height="40" fill="#00d4aa" rx="4"></rect>
+  <text x="220" y="106" font-family="monospace" font-size="13" fill="#e5e7eb" text-anchor="end">Qwen2.5-1.5B</text>
+  <text x="780" y="106" font-family="monospace" font-size="14" fill="#00d4aa">31</text>
+  <!-- Gemma3-1B 24 → 433 -->
+  <rect x="230" y="130" width="433" height="40" fill="#4285f4" rx="4"></rect>
+  <text x="220" y="156" font-family="monospace" font-size="13" fill="#e5e7eb" text-anchor="end">Gemma3-1B</text>
+  <text x="673" y="156" font-family="monospace" font-size="14" fill="#4285f4">24</text>
+  <!-- Qwen3-0.6B 21 → 379 -->
+  <rect x="230" y="180" width="379" height="40" fill="#00d4aa" rx="4"></rect>
+  <text x="220" y="206" font-family="monospace" font-size="13" fill="#e5e7eb" text-anchor="end">Qwen3-0.6B</text>
+  <text x="619" y="206" font-family="monospace" font-size="14" fill="#00d4aa">21</text>
+  <!-- Gemma-3n-E2B 16 → 289 -->
+  <rect x="230" y="230" width="289" height="40" fill="#4285f4" rx="4"></rect>
+  <text x="220" y="256" font-family="monospace" font-size="13" fill="#e5e7eb" text-anchor="end">Gemma-3n-E2B</text>
+  <text x="529" y="256" font-family="monospace" font-size="14" fill="#4285f4">16</text>
+  <!-- phi-4-mini 10 → 181 -->
+  <rect x="230" y="280" width="181" height="40" fill="#a78bfa" rx="4"></rect>
+  <text x="220" y="306" font-family="monospace" font-size="13" fill="#e5e7eb" text-anchor="end">phi-4-mini (3.8B)</text>
+  <text x="421" y="306" font-family="monospace" font-size="14" fill="#a78bfa">10</text>
+  <text x="440" y="360" font-family="sans-serif" font-size="12.5" fill="#9ca3af" text-anchor="middle">Gemma3-1B 用约 1/3 于 E2B 的体积（1,005 vs 2,965 MB）跑出 24 tok/s GPU decode</text>
+  <text x="440" y="385" font-family="sans-serif" font-size="12.5" fill="#9ca3af" text-anchor="middle">——且其 GPU decode（24）反而低于 CPU（33），prefill 1,191 tok/s 补回差距</text>
+  <text x="440" y="440" font-family="sans-serif" font-size="12" fill="#6b7280" text-anchor="middle">蓝色为 Gemma 系，绿色为 Qwen 系，紫色为 phi 系 · 数据：LiteRT-LM 官方基准表（2026-09-04），设备以图注标明</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">GPU decode 速度横评（tok/s）。注意各模型的测试设备不同（Qwen2.5-1.5B 为 S25 Ultra、Qwen3-0.6B 为 Vivo X300 Pro，其余为 S24 Ultra），跨设备数字只作量级参考；同为 S24 Ultra 的 Gemma3-1B 与 Gemma-3n-E2B、phi-4-mini 之间可直接对比</figcaption>
+</figure>
+
+<p>三点选型观察：</p>
+<ol>
+<li><strong>纯文本、预算敏感</strong>：Qwen2.5-1.5B 是被低估的选项——1,598 MB 的体积（E2B 的 54%）在 S25 Ultra 上跑出 31 tok&#x2F;s GPU decode、1,668 tok&#x2F;s prefill，比 E2B 快近一倍；中文语料的 tokenizer 切分效率也是社区公认的加分项（本文未单独实测）。</li>
+<li><strong>多模态（图像&#x2F;音频输入）</strong>：Gemma 3n 是 LiteRT-LM 官方适配列表中唯一内建完整多模态编码器的选项——该列表其余模型（Qwen 系、phi 系、Gemma3-1B）均标注为纯文本 Chat 类型（<a target="_blank" rel="noopener" href="https://developers.google.com/edge/litert-lm/overview">官方支持列表</a>，2026-09-04 版）。</li>
+<li><strong>超小内存设备</strong>：Qwen3-0.6B（586 MB）适合 4–6 GB RAM 的中端机兜底，但注意它的 decode 只有 9–21 tok&#x2F;s，交互体验下限，更适合后台批处理（摘要、分类）而非对话。</li>
+</ol>
+<p>值得强调的是，这张表里所有模型跑在同一个推理栈上——LiteRT-LM 的适配质量抹平了运行时差异，<strong>数据差距基本反映模型架构与量化质量本身</strong>。这也意味着从 Gemma 换 Qwen（或反向）在工程上只是换模型文件，运行时代码不变。</p>
+<h2 id="可复现的调优清单"><a href="#可复现的调优清单" class="headerlink" title="可复现的调优清单"></a>可复现的调优清单</h2><p>把前文结论收拢成上线前的检查表：</p>
+<p><strong>初始化</strong></p>
+<ul>
+<li>模型加载提前到 <code>Application.onCreate</code>，冷启动 TTFT 的收益远大于 backend 微调（Commencis 实测 CPU 冷启动即快 20%）；</li>
+<li>启动时探测 backend 可用性：GPU 初始化异常捕获后降级 CPU；NPU 路径<strong>校验运行时真实 backend</strong>，防止 <code>npu→gpu</code> 静默 fallback 污染测试数据（#2202）。</li>
+</ul>
+<p><strong>Backend 选型</strong></p>
+<ul>
+<li>长 prompt 短回答（摘要&#x2F;RAG&#x2F;翻译）→ GPU 或 NPU，吃 prefill 红利；</li>
+<li>短 prompt 长回答（对话&#x2F;写作）→ 优先 NPU（decode 与能效双优），无 NPU 则接受 CPU&#x2F;GPU 的 decode 持平现实；</li>
+<li>能效敏感（全天候语音、离线 Agent）→ 只考虑 NPU（prefill 能耗比 CPU 低 35–59 倍）。</li>
+</ul>
+<p><strong>测试策略</strong></p>
+<ul>
+<li>GPU 验收必须含 ≥3k token 的长 prompt 数字抽取用例（日期&#x2F;金额&#x2F;编号回显），短句冒烟测不出 fp16 累加缺陷；</li>
+<li>回归禁用 <code>q4_block128</code> 量化的 <code>.task</code> 上 GPU；</li>
+<li>压测覆盖热态（连续 30 分钟）与不同电量状态，记录降频后的 tok&#x2F;s 衰减。</li>
+</ul>
+<p><strong>内存与功耗</strong></p>
+<ul>
+<li>“2GB 内存跑 E2B”只对加速器侧成立，进程预算按模型文件 + KV Cache + 运行时全额计算，6–8 GB RAM 起步；</li>
+<li>图片输入统一 downscale 到长边 512 px，把多模态 prefill 从分钟级压到秒级（Commencis 实测）；</li>
+<li>decode 目标 tok&#x2F;s 按场景封顶（10–15 足够），用 NPU&#x2F;Mem 限频换 38%–62% 能效。</li>
+</ul>
+<h2 id="常见问题"><a href="#常见问题" class="headerlink" title="常见问题"></a>常见问题</h2><h3 id="E2B-和-E4B-应该怎么选？"><a href="#E2B-和-E4B-应该怎么选？" class="headerlink" title="E2B 和 E4B 应该怎么选？"></a>E2B 和 E4B 应该怎么选？</h3><p>优先 E2B。官方基准中 E4B 的 decode 只有 9 tok&#x2F;s（E2B 为 16），交互观感明显劣化，且模型文件从 2,965 MB 涨到 4,235 MB；只有在业务确需 E4B 的质量增益（LMArena 超过 1300 分）时才值得付出这个代价。</p>
+<h3 id="为什么-GPU-只大幅提速-prefill，几乎不提速-decode？"><a href="#为什么-GPU-只大幅提速-prefill，几乎不提速-decode？" class="headerlink" title="为什么 GPU 只大幅提速 prefill，几乎不提速 decode？"></a>为什么 GPU 只大幅提速 prefill，几乎不提速 decode？</h3><p>Prefill 是 compute-bound，GPU 算力直接兑现为吞吐（816 vs 111 tok&#x2F;s）；decode 是 memory-bound，每生成一个 token 都要把权重和 KV Cache 从内存读一遍，瓶颈在内存带宽而非算力，所以 CPU 与 GPU 都停在 16 tok&#x2F;s。想提速 decode，路径是换带宽更高的 NPU 或减小模型（如 Gemma3-1B）。</p>
+<h3 id="Gemma-3n-有-NPU-官方基准数据吗？"><a href="#Gemma-3n-有-NPU-官方基准数据吗？" class="headerlink" title="Gemma 3n 有 NPU 官方基准数据吗？"></a>Gemma 3n 有 NPU 官方基准数据吗？</h3><p>官方 LiteRT-LM 基准表中 Gemma 3n 只给了 CPU&#x2F;GPU 数据；NPU 路径依赖厂商 NPU SDK（如高通 QNN），量化与算子覆盖决定兼容性。可参考同框架下 Gemma3-1B 的 NPU 实测（S25 Ultra：prefill 5,836 &#x2F; decode 85 tok&#x2F;s），并且务必在代码里校验运行时真实 backend，防止静默 fallback 到 GPU 污染数据。</p>
+<h3 id="多大内存的手机能跑-Gemma-3n-E2B？"><a href="#多大内存的手机能跑-Gemma-3n-E2B？" class="headerlink" title="多大内存的手机能跑 Gemma 3n E2B？"></a>多大内存的手机能跑 Gemma 3n E2B？</h3><p>官方口径是加速器侧约 1.91B 有效参数、最低 2 GB 内存可运行，但模型文件本身就有 2,965 MB，加上 KV Cache、运行时 buffer 与业务进程，工程上建议 6–8 GB RAM 起步。架构原理（MatFormer 与 PLE）详见 <a href="https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/">上一篇 AI Edge Gallery 架构解析</a>。</p>
+<h2 id="结语：3n-是最好的教材，但下一站已经是-Gemma-4"><a href="#结语：3n-是最好的教材，但下一站已经是-Gemma-4" class="headerlink" title="结语：3n 是最好的教材，但下一站已经是 Gemma 4"></a>结语：3n 是最好的教材，但下一站已经是 Gemma 4</h2><p>2026 年 7 月发布的 <a target="_blank" rel="noopener" href="https://arxiv.org/abs/2607.02770">Gemma 4 技术报告</a>显示，新一代 E2B&#x2F;E4B 在音频识别（FLEURS 平均 WER 从 3n 的 0.108 降到 0.090）、长上下文（RULER 32k 从 83.0 提升到与 E4B 持平的水平）上全面进步，且官方基准已把 Gemma4-E2B 列为 featured model：S26 Ultra 上 GPU prefill 3,808 tok&#x2F;s、decode 52 tok&#x2F;s、TTFT 0.3 秒、峰值内存 676 MB——decode 速度约为 3n E2B 的 3.3 倍。同一代 LiteRT-LM 运行时，3n 的调优方法论全部平移适用。</p>
+<p>端侧大模型这条路的工程底牌已经掀开：架构（MatFormer&#x2F;PLE）解决”装得下”，量化与 backend 解决”跑得动”，限频与分块解决”耗得起”。剩下的功课——把”每 token 毫焦”和”降频后 tok&#x2F;s”写进监控面板，像对待启动耗时一样对待推理能效——这类可验证的开发流程怎么让 Agent 参与进来，<a href="https://blog.shuying.me/2026/08/11/2026-08-11-android-cli-android-skills-best-practice/">Android Skills 与 CLI 工具链的实践</a>给出了现成模式，也是这个系列下一篇想聊的话题。</p>
+<p>（本文数据核验于 2026-10-24：LiteRT-LM 官方基准表 2026-09-04 版、Gemma3-1B 模型卡、LiteRT-LM issue #2202、arXiv:2607.02770 &#x2F; 2407.05858 &#x2F; 2603.23640 &#x2F; 2606.23001、Google 开发者博客与 Commencis 公开实测。全文统计口径：汉字与英文&#x2F;数字词合计数见署名行，正文含标题与表格、不含 SVG 与元数据。）</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/10/24/gemma-3n-android-llm-tuning/" title="端侧大模型实测：Gemma 3n 在 Android 上的性能、内存与功耗调优">https://blog.shuying.me/2026/10/24/gemma-3n-android-llm-tuning/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%AB%AF%E4%BE%A7-AI/" rel="tag"># 端侧 AI</a>
+              <a href="/tags/LiteRT/" rel="tag"># LiteRT</a>
+              <a href="/tags/Gemma-3n/" rel="tag"># Gemma 3n</a>
+              <a href="/tags/NPU/" rel="tag"># NPU</a>
+              <a href="/tags/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/" rel="tag"># 性能优化</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/10/08/2026-10-08-shopify-helix-ai-workflow/" rel="prev" title="Shopify Helix AI 工作流详解：检查点与质量门如何驱动 300+ 屏 App 迁回原生">
+      <i class="fa fa-chevron-left"></i> Shopify Helix AI 工作流详解：检查点与质量门如何驱动 300+ 屏 App 迁回原生
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%88%E6%8A%8A%E6%8C%87%E6%A0%87%E8%AF%B4%E6%B8%85%E6%A5%9A%EF%BC%9Aprefill%E3%80%81decode-%E5%92%8C-TTFT-%E4%B8%8D%E6%98%AF%E4%B8%80%E5%9B%9E%E4%BA%8B"><span class="nav-number">1.</span> <span class="nav-text">先把指标说清楚：prefill、decode 和 TTFT 不是一回事</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%98%E6%96%B9%E5%9F%BA%E5%87%86%EF%BC%9AGemma-3n-%E5%9C%A8%E6%97%97%E8%88%B0%E6%9C%BA%E4%B8%8A%E7%9A%84%E5%AE%8C%E6%95%B4%E6%88%90%E7%BB%A9%E5%8D%95"><span class="nav-number">2.</span> <span class="nav-text">官方基准：Gemma 3n 在旗舰机上的完整成绩单</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%A1%AC%E4%BB%B6%E5%8A%A0%E9%80%9F%E8%B7%AF%E5%BE%84%EF%BC%9ACPU%E3%80%81GPU%E3%80%81NPU-%E5%90%84%E8%87%AA%E7%9A%84%E6%94%B6%E7%9B%8A%E4%B8%8E%E5%9D%91"><span class="nav-number">3.</span> <span class="nav-text">硬件加速路径：CPU、GPU、NPU 各自的收益与坑</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#GPU%EF%BC%9Aprefill-%E7%BA%A2%E5%88%A9%E6%98%8E%E7%A1%AE%EF%BC%8C%E4%BD%86%E6%9C%89%E4%B8%A4%E4%B8%AA%E5%B7%B2%E7%9F%A5%E7%9A%84%E5%9D%91"><span class="nav-number">3.1.</span> <span class="nav-text">GPU：prefill 红利明确，但有两个已知的坑</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#NPU%EF%BC%9A%E9%80%9F%E5%BA%A6%E4%B8%8E%E8%83%BD%E6%95%88%E7%9A%84%E5%8F%8C%E5%86%A0%E7%8E%8B%EF%BC%8C%E4%BB%A3%E4%BB%B7%E6%98%AF%E5%85%BC%E5%AE%B9%E6%80%A7%E7%9F%A9%E9%98%B5"><span class="nav-number">3.2.</span> <span class="nav-text">NPU：速度与能效的双冠王，代价是兼容性矩阵</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E4%B8%AA%E5%8F%8D%E7%9B%B4%E8%A7%89%E7%9A%84%E8%A1%A5%E5%85%85%EF%BC%9AGPU-%E4%B8%8D%E6%80%BB%E6%98%AF%E6%AF%94-CPU-%E5%BF%AB"><span class="nav-number">3.3.</span> <span class="nav-text">一个反直觉的补充：GPU 不总是比 CPU 快</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%86%85%E5%AD%98%E8%B0%83%E4%BC%98%EF%BC%9AMatFormer-%E4%B8%8E-PLE-%E7%9A%84%E7%9C%9F%E5%AE%9E%E5%90%AB%E4%B9%89"><span class="nav-number">4.</span> <span class="nav-text">内存调优：MatFormer 与 PLE 的真实含义</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8A%9F%E8%80%97%E4%B8%8E%E5%8F%91%E7%83%AD%EF%BC%9A%E5%A4%9A%E6%95%B0%E5%9C%BA%E6%99%AF%E8%AF%A5%E4%BC%98%E5%8C%96%E7%9A%84%E6%98%AF%E2%80%9D%E6%AF%8F-token-%E7%84%A6%E8%80%B3%E2%80%9D%E8%80%8C%E4%B8%8D%E6%98%AF%E2%80%9Dtok-x2F-s%E2%80%9D"><span class="nav-number">5.</span> <span class="nav-text">功耗与发热：多数场景该优化的是”每 token 焦耳”而不是”tok&#x2F;s”</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Gemma-3n-%E8%BF%98%E6%98%AF-Qwen%EF%BC%9F%E5%90%8C%E6%A1%86%E6%9E%B6%E4%B8%8B%E7%9A%84%E6%A8%AA%E5%90%91%E5%AF%B9%E6%AF%94"><span class="nav-number">6.</span> <span class="nav-text">Gemma 3n 还是 Qwen？同框架下的横向对比</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%AF%E5%A4%8D%E7%8E%B0%E7%9A%84%E8%B0%83%E4%BC%98%E6%B8%85%E5%8D%95"><span class="nav-number">7.</span> <span class="nav-text">可复现的调优清单</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98"><span class="nav-number">8.</span> <span class="nav-text">常见问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#E2B-%E5%92%8C-E4B-%E5%BA%94%E8%AF%A5%E6%80%8E%E4%B9%88%E9%80%89%EF%BC%9F"><span class="nav-number">8.1.</span> <span class="nav-text">E2B 和 E4B 应该怎么选？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-GPU-%E5%8F%AA%E5%A4%A7%E5%B9%85%E6%8F%90%E9%80%9F-prefill%EF%BC%8C%E5%87%A0%E4%B9%8E%E4%B8%8D%E6%8F%90%E9%80%9F-decode%EF%BC%9F"><span class="nav-number">8.2.</span> <span class="nav-text">为什么 GPU 只大幅提速 prefill，几乎不提速 decode？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Gemma-3n-%E6%9C%89-NPU-%E5%AE%98%E6%96%B9%E5%9F%BA%E5%87%86%E6%95%B0%E6%8D%AE%E5%90%97%EF%BC%9F"><span class="nav-number">8.3.</span> <span class="nav-text">Gemma 3n 有 NPU 官方基准数据吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%9A%E5%A4%A7%E5%86%85%E5%AD%98%E7%9A%84%E6%89%8B%E6%9C%BA%E8%83%BD%E8%B7%91-Gemma-3n-E2B%EF%BC%9F"><span class="nav-number">8.4.</span> <span class="nav-text">多大内存的手机能跑 Gemma 3n E2B？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E8%AF%AD%EF%BC%9A3n-%E6%98%AF%E6%9C%80%E5%A5%BD%E7%9A%84%E6%95%99%E6%9D%90%EF%BC%8C%E4%BD%86%E4%B8%8B%E4%B8%80%E7%AB%99%E5%B7%B2%E7%BB%8F%E6%98%AF-Gemma-4"><span class="nav-number">9.</span> <span class="nav-text">结语：3n 是最好的教材，但下一站已经是 Gemma 4</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

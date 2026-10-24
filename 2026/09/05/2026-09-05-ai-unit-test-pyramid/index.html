@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="AI 让写测试的成本暴跌，但测试套件并没有自动变好。本文给出 70&#x2F;20&#x2F;10 测试金字塔在 AI 时代的落地路径：用 CI 数据量基线、按层分配人机分工、用变异测试防&quot;假测试&quot;、附六周推进路线图与 Kotlin 代码示例。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地">
+<meta property="og:url" content="https://blog.shuying.me/2026/09/05/2026-09-05-ai-unit-test-pyramid/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="AI 让写测试的成本暴跌，但测试套件并没有自动变好。本文给出 70&#x2F;20&#x2F;10 测试金字塔在 AI 时代的落地路径：用 CI 数据量基线、按层分配人机分工、用变异测试防&quot;假测试&quot;、附六周推进路线图与 Kotlin 代码示例。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/ai-unit-test-pyramid-cover.png">
+<meta property="article:published_time" content="2026-09-05T10:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="单元测试">
+<meta property="article:tag" content="AI 编码">
+<meta property="article:tag" content="测试金字塔">
+<meta property="article:tag" content="软件质量">
+<meta property="article:tag" content="CI&#x2F;CD">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/ai-unit-test-pyramid-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/09/05/2026-09-05-ai-unit-test-pyramid/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/09/05/2026-09-05-ai-unit-test-pyramid/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-09-05 18:00:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-09-05T18:00:00+08:00">2026-09-05</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">AI 让写测试的成本暴跌，但测试套件并没有自动变好。本文给出 70/20/10 测试金字塔在 AI 时代的落地路径：用 CI 数据量基线、按层分配人机分工、用变异测试防"假测试"、附六周推进路线图与 Kotlin 代码示例。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/ai-unit-test-pyramid-cover.png" itemprop="contentUrl">
+        </div>
+        <p>三年前我们在<a href="https://blog.shuying.me/2023/02/20/Android%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95%E5%AE%9E%E8%B7%B5/">《Android单元测试实践》</a>里写过 Google 官方建议的测试金字塔：小型测试（单元测试）占 70%，中型测试（集成测试）占 20%，大型测试（端到端）占 10%。这篇文章当时收到了不少反馈，但反馈里出现频率最高的一句话是：”比例谁都背得出来，项目排期里就是没人写。”</p>
+<p>2026 年，这个问题有了新的解法，也带来了新的坑。解法是：AI 让生成单元测试的边际成本第一次趋近于零。坑是：很多团队的体验是 AI 一晚上生成了几百个测试，覆盖率涨了，线上缺陷却一个没少——因为生成的测试”看起来能过”，却在复读实现，而不是验证行为。</p>
+<p>所以今天要回答的问题不是”AI 会不会写测试”，而是”怎么把 AI 的产出组织进一个可持续的测试体系”。本文给出一套完整落地路径：先用 CI 数据量出真实基线，再按 70&#x2F;20&#x2F;10 分配人机分工，最后用变异测试和门禁守住质量，附六周推进路线图。</p>
+<blockquote>
+<p><strong>Key Takeaways</strong></p>
+<ul>
+<li>70&#x2F;20&#x2F;10 仍是有效的资源分配框架，变的是实现方式：AI 让占大头的业务逻辑单元测试第一次可以低成本批量生产。</li>
+<li>AI 生成测试的瓶颈从”写”转移到了”验证”——Meta TestGen-LLM 经过层层过滤后仍有约 27% 的建议未被采纳，变异测试比覆盖率更能识别”假测试”。</li>
+<li>集成与 UI 层 AI 只能辅助：起草用例矩阵、修复选择器；环境搭建与关键路径取舍仍由人决定。</li>
+<li>先用 CI 数据建立基线，再按六周路线图滚动推进；度量缺陷逃逸率与变异分数，而不是测试数量。</li>
+</ul>
+</blockquote>
+<h2 id="测试金字塔没过时，过时的是”所有测试都手写”"><a href="#测试金字塔没过时，过时的是”所有测试都手写”" class="headerlink" title="测试金字塔没过时，过时的是”所有测试都手写”"></a>测试金字塔没过时，过时的是”所有测试都手写”</h2><p>70&#x2F;20&#x2F;10 这个比例出自 Mike Cohn 2009 年《Succeeding with Agile》里一个高响应力团队的真实分布，Google 把同样的结构写进了官方 Android 测试指南，作为小型 &#x2F; 中型 &#x2F; 大型测试的建议配比。金字塔的逻辑很朴素：沿着金字塔逐级向上，测试对真实用户场景的保真度越高，但运行越慢、维护越贵、越不稳定。单元测试毫秒级跑完、失败原因一目了然——Martin Fowler 的表述是”在一台还不错的机器上，你可以在几分钟内跑完成千上万个单元测试”（<a target="_blank" rel="noopener" href="https://martinfowler.com/articles/practical-test-pyramid.html">Practical Test Pyramid</a>，2018）；UI 测试则动辄分钟级、失败可能只是环境抖动。</p>
+<p>AI 没有推翻这个结构，反而强化了它——因为大模型的能力剖面和金字塔恰好”同构”：</p>
+<ul>
+<li><strong>金字塔底层（单元测试）</strong>：输入输出明确、无环境依赖、验证闭环极短（生成后编译跑一下就知道对错）。这正是 LLM 最擅长的”可快速验证任务”，错了可以立刻重来。</li>
+<li><strong>金字塔中层（集成测试）</strong>：需要搭建数据库、网络、依赖服务的环境，AI 不了解你的测试基建，只能起草用例。</li>
+<li><strong>金字塔顶层（UI 测试）</strong>：有状态、有时序、受渲染影响，一次失败可能是十几种原因，AI 无法自证对错，人工维护成本最高。</li>
+</ul>
+<p>换句话说，AI 最擅长补的，恰好是金字塔的底座。这也是 70&#x2F;20&#x2F;10 在 AI 时代依然成立的原因：它把最多的量分配给了 AI 产出质量最高、验证成本最低的那一层。</p>
+<p>这个判断的背景是：AI 辅助编码已经不是尝鲜。Stack Overflow 2025 年开发者调查显示，84% 的开发者正在使用或计划使用 AI 工具，专业开发者中过半每天使用；但任务级数据揭示了落差——“测试代码”是 AI 渗透最慢的任务之一：只有 17.9% 的开发者在这个任务上主要使用 AI，44.1% 明确不打算用（<a target="_blank" rel="noopener" href="https://survey.stackoverflow.co/2025/ai">Stack Overflow 2025 开发者调查</a>，2025-07，retrieved 2026-09-05）。Google Cloud 的 DORA 2024 年度报告从另一个角度敲了警钟：超过 75% 的受访者已在至少一项日常职责中依赖 AI，但 AI 采用率每提升 25%，交付稳定性估计下降 7.2%（<a target="_blank" rel="noopener" href="https://cloud.google.com/blog/products/devops-sre/announcing-the-2024-dora-report">DORA 2024 报告公告</a>，2024-10-23，retrieved 2026-09-05）。产能上来了，质量体系没跟上，稳定性就买单。对工程团队来说，真正的问题从”要不要用 AI”变成了”用什么机制把 AI 的产出纳入质量体系”——而测试金字塔正好就是这个机制的骨架。</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 400" style="max-width:100%;height:auto;" role="img" aria-label="AI 时代的测试金字塔人机分工矩阵：每层测试中 AI 与人各自负责的部分">
+  <title>AI 时代的测试金字塔人机分工</title>
+  <desc>三层测试的人机分工。业务逻辑单元测试（70%）：AI 负责行为清单生成、批量生成测试、初步修复失败，人负责评审断言语义、定义业务预期。集成测试（20%）：AI 起草用例矩阵、构造参数化数据，人搭建环境骨架（依赖注入、测试容器、桩服务）与 CI 任务编排。UI 测试（10%）：AI 修复选择器、解释失败日志，人选定关键路径、维护冒烟测试集。</desc>
+  <!-- 单元测试列 -->
+  <rect x="20" y="20" width="246" height="360" rx="12" fill="#0d1f2d" stroke="#22c55e" stroke-width="2.5"/>
+  <text x="143" y="56" font-family="sans-serif" font-size="16" fill="#22c55e" text-anchor="middle" font-weight="bold">70% 业务逻辑单元测试</text>
+  <text x="143" y="78" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">AI 主战场</text>
+  <rect x="38" y="96" width="210" height="122" rx="8" fill="#0d1117" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="52" y="120" font-family="sans-serif" font-size="12" fill="#22c55e" font-weight="bold">AI 负责</text>
+  <text x="52" y="146" font-family="sans-serif" font-size="11" fill="#d1d5db">• 生成行为清单（等价类/边界）</text>
+  <text x="52" y="168" font-family="sans-serif" font-size="11" fill="#d1d5db">• 批量生成测试代码</text>
+  <text x="52" y="190" font-family="sans-serif" font-size="11" fill="#d1d5db">• 初步修复失败用例</text>
+  <rect x="38" y="232" width="210" height="122" rx="8" fill="#0d1117" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="52" y="256" font-family="sans-serif" font-size="12" fill="#e5e7eb" font-weight="bold">人 把守</text>
+  <text x="52" y="282" font-family="sans-serif" font-size="11" fill="#9ca3af">• 评审断言是否表达业务预期</text>
+  <text x="52" y="304" font-family="sans-serif" font-size="11" fill="#9ca3af">• 定义"什么是正确的行为"</text>
+  <text x="52" y="326" font-family="sans-serif" font-size="11" fill="#9ca3af">• 变异分数门禁基线</text>
+
+  <!-- 集成测试列 -->
+  <rect x="287" y="20" width="246" height="360" rx="12" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2.5"/>
+  <text x="410" y="56" font-family="sans-serif" font-size="16" fill="#38bdf8" text-anchor="middle" font-weight="bold">20% 集成测试</text>
+  <text x="410" y="78" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">AI 起草 + 人搭环境</text>
+  <rect x="305" y="96" width="210" height="122" rx="8" fill="#0d1117" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="319" y="120" font-family="sans-serif" font-size="12" fill="#38bdf8" font-weight="bold">AI 负责</text>
+  <text x="319" y="146" font-family="sans-serif" font-size="11" fill="#d1d5db">• 起草用例矩阵（正常/异常/边界）</text>
+  <text x="319" y="168" font-family="sans-serif" font-size="11" fill="#d1d5db">• 构造参数化测试数据</text>
+  <text x="319" y="190" font-family="sans-serif" font-size="11" fill="#d1d5db">• 依据契约扩展用例</text>
+  <rect x="305" y="232" width="210" height="122" rx="8" fill="#0d1117" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="319" y="256" font-family="sans-serif" font-size="12" fill="#e5e7eb" font-weight="bold">人 把守</text>
+  <text x="319" y="282" font-family="sans-serif" font-size="11" fill="#9ca3af">• 环境骨架：DI / 测试容器 / 桩</text>
+  <text x="319" y="304" font-family="sans-serif" font-size="11" fill="#9ca3af">• 测试双胞胎策略选型</text>
+  <text x="319" y="326" font-family="sans-serif" font-size="11" fill="#9ca3af">• CI 任务编排与隔离</text>
+
+  <!-- UI 测试列 -->
+  <rect x="554" y="20" width="246" height="360" rx="12" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2.5"/>
+  <text x="677" y="56" font-family="sans-serif" font-size="16" fill="#a78bfa" text-anchor="middle" font-weight="bold">10% UI 测试</text>
+  <text x="677" y="78" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">克制使用，只盖关键路径</text>
+  <rect x="572" y="96" width="210" height="122" rx="8" fill="#0d1117" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="586" y="120" font-family="sans-serif" font-size="12" fill="#a78bfa" font-weight="bold">AI 负责</text>
+  <text x="586" y="146" font-family="sans-serif" font-size="11" fill="#d1d5db">• 生成 / 修复选择器与 Page Object</text>
+  <text x="586" y="168" font-family="sans-serif" font-size="11" fill="#d1d5db">• 解释失败堆栈，辅助 triage</text>
+  <text x="586" y="190" font-family="sans-serif" font-size="11" fill="#d1d5db">• 从 PRD 提炼冒烟清单</text>
+  <rect x="572" y="232" width="210" height="122" rx="8" fill="#0d1117" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="586" y="256" font-family="sans-serif" font-size="12" fill="#e5e7eb" font-weight="bold">人 把守</text>
+  <text x="586" y="282" font-family="sans-serif" font-size="11" fill="#9ca3af">• 选定关键用户路径</text>
+  <text x="586" y="304" font-family="sans-serif" font-size="11" fill="#9ca3af">• 维护冒烟测试集</text>
+  <text x="586" y="326" font-family="sans-serif" font-size="11" fill="#9ca3af">• 决定"什么不值得自动化"</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">AI 时代的测试金字塔人机分工：AI 主攻底层，人把守验证环节</figcaption>
+</figure>
+
+<h2 id="第一步：用-CI-数据量出真实分布，而不是拍脑袋定比例"><a href="#第一步：用-CI-数据量出真实分布，而不是拍脑袋定比例" class="headerlink" title="第一步：用 CI 数据量出真实分布，而不是拍脑袋定比例"></a>第一步：用 CI 数据量出真实分布，而不是拍脑袋定比例</h2><p>读完这一节，你应该能得到一张三行的基线表：每一层测试有多少个、占多大比例、在 CI 里跑多久、flaky 率多少。没有这张表，后面所有的比例讨论都是空中楼阁。</p>
+<p>需要收集三类数据，全部来自现成的 CI 产物：</p>
+<ol>
+<li><strong>各层测试数量与占比</strong>。Android 项目里，<code>testDebugUnitTest</code> 的 JUnit XML 在 <code>build/test-results/</code>，<code>connectedDebugAndroidTest</code> 的报告在 instrumentation 输出里；服务端项目看 <code>pytest --junitxml</code> 或 Maven Surefire 的 XML。注意 JUnit XML 是 XML 而非 JSON，jq 处理不了，聚合要用 xmlstarlet（命令在列表后）。</li>
+<li><strong>各层运行时长</strong>。直接读 CI 任务耗时：单元测试任务通常在秒级，instrumentation 测试任务通常在分钟级。这个差距本身就是金字塔存在的理由，也是后面说服团队的数据。</li>
+<li><strong>flaky 率</strong>。统计”同一 commit 重跑后结果翻转”的用例占比。很多 CI 平台（如 GitLab 的 flaky test 检测、Buildkite 的 retry 事件）已经内置了这项数据。</li>
+</ol>
+<p>以第 1 项的 Gradle 单元测试产物为例，xmlstarlet 一行就能列出每套件的用例数与失败数：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">xmlstarlet sel -t -m <span class="string">&#x27;/testsuites/testsuite&#x27;</span> \</span><br><span class="line">  -v <span class="string">&#x27;@name&#x27;</span> -o <span class="string">&#x27;  tests=&#x27;</span> -v <span class="string">&#x27;@tests&#x27;</span> -o <span class="string">&#x27;  failures=&#x27;</span> -v <span class="string">&#x27;@failures&#x27;</span> -n \</span><br><span class="line">  build/test-results/testDebugUnitTest/*.xml</span><br></pre></td></tr></table></figure>
+
+<p>把结果整理成基线表（下表为示意数据，格式供参考）：</p>
+<table>
+<thead>
+<tr>
+<th>测试层</th>
+<th>数量</th>
+<th>占比</th>
+<th>CI 时长</th>
+<th>flaky 率</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>单元测试（业务逻辑）</td>
+<td>120</td>
+<td>15%</td>
+<td>40s</td>
+<td>&lt;1%</td>
+</tr>
+<tr>
+<td>集成测试</td>
+<td>80</td>
+<td>10%</td>
+<td>6min</td>
+<td>3%</td>
+</tr>
+<tr>
+<td>UI &#x2F; E2E</td>
+<td>600</td>
+<td>75%</td>
+<td>45min</td>
+<td>12%</td>
+</tr>
+</tbody></table>
+<p>（这张表是典型的”倒金字塔”现状：大量 UI 测试盖住了几乎没有单元测试的业务逻辑层——也是最常见的起点。）</p>
+<p>作为对照，Google 官方文档建议的目标分布长这样：</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 380" style="max-width:100%;height:auto;font-family:'Inter',system-ui,sans-serif" role="img" aria-labelledby="pyr-title pyr-desc">
+  <title id="pyr-title">测试金字塔目标分布：70/20/10</title>
+  <desc id="pyr-desc">Google 官方 Android 测试指南建议的测试分布目标：业务逻辑单元测试占 70%，集成测试占 20%，UI 端到端测试占 10%。该比例源自 Mike Cohn《Succeeding with Agile》提出的测试金字塔。</desc>
+  <path d="M 280,50 A 125,125 0 1 1 161.1,213.6 L 211.5,197.2 A 72,72 0 1 0 280,103 Z" fill="#f97316"/>
+  <path d="M 161.1,213.6 A 125,125 0 0 1 206.5,73.9 L 237.7,116.8 A 72,72 0 0 0 211.5,197.2 Z" fill="#38bdf8"/>
+  <path d="M 206.5,73.9 A 125,125 0 0 1 280,50 L 280,103 A 72,72 0 0 0 237.7,116.8 Z" fill="#a78bfa"/>
+  <text x="360" y="238" font-size="16" font-weight="800" fill="#111827">70%</text>
+  <text x="186" y="150" font-size="14" font-weight="800" fill="#111827">20%</text>
+  <text x="249" y="86" font-size="12" font-weight="800" fill="#111827">10%</text>
+  <text x="280" y="170" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">70 / 20 / 10</text>
+  <text x="280" y="192" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.6">Google 建议分布</text>
+  <rect x="60" y="318" width="12" height="12" fill="#f97316"/>
+  <text x="80" y="328" font-size="12" fill="currentColor" opacity="0.8">70% 业务逻辑单元测试</text>
+  <rect x="230" y="318" width="12" height="12" fill="#38bdf8"/>
+  <text x="250" y="328" font-size="12" fill="currentColor" opacity="0.8">20% 集成测试</text>
+  <rect x="390" y="318" width="12" height="12" fill="#a78bfa"/>
+  <text x="410" y="328" font-size="12" fill="currentColor" opacity="0.8">10% UI 测试</text>
+  <text x="280" y="372" text-anchor="middle" font-size="10" fill="var(--chart-muted, currentColor)">Source: Mike Cohn, Succeeding with Agile (2009)；Google Android 测试指南</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">测试金字塔目标分布，结构源自 Mike Cohn《Succeeding with Agile》（2009），见 <a target="_blank" rel="noopener" href="https://martinfowler.com/bliki/TestPyramid.html">Martin Fowler 的 Test Pyramid 综述</a>；Google Android 官方测试文档建议的正是这一比例</figcaption>
+</figure>
+
+<p>关键判断：<strong>基线的意义是发现结构性缺失，不是精确凑出 70&#x2F;20&#x2F;10</strong>。如果你的现状是 15&#x2F;10&#x2F;75，要做的不是把 600 个 E2E 删掉，而是把新增测试的产能全部导向底层，让比例随时间自然回归。</p>
+<p>这一步的验收标准有两个：拿到基线表，并且选定一个试点模块——业务逻辑密集、近期缺陷多、当前单元测试少的那个模块，作为第二步 AI 生成的主战场。</p>
+<h2 id="第二步：业务逻辑层（70-），AI-的主战场也是验证的主战场"><a href="#第二步：业务逻辑层（70-），AI-的主战场也是验证的主战场" class="headerlink" title="第二步：业务逻辑层（70%），AI 的主战场也是验证的主战场"></a>第二步：业务逻辑层（70%），AI 的主战场也是验证的主战场</h2><p>这一节给出单测产线的完整闭环：哪些代码值得先做、怎么给 AI 下指令、怎么验证产出不是”假测试”。</p>
+<h3 id="先圈地：什么代码值得让-AI-写测试"><a href="#先圈地：什么代码值得让-AI-写测试" class="headerlink" title="先圈地：什么代码值得让 AI 写测试"></a>先圈地：什么代码值得让 AI 写测试</h3><p>优先级排序很明确：<strong>纯业务逻辑</strong>——UseCase &#x2F; Interactor、ViewModel 与 Presenter 的状态逻辑、解析器与序列化、状态机、金额与权限计算、工具类。这些代码输入输出明确、无 UI 依赖、副作用少，AI 生成质量和验证效率都最高。UI 渲染、线程调度、框架胶水代码先放过。</p>
+<h3 id="关键动作：让-AI-按”行为”生成，而不是按”方法”复读"><a href="#关键动作：让-AI-按”行为”生成，而不是按”方法”复读" class="headerlink" title="关键动作：让 AI 按”行为”生成，而不是按”方法”复读"></a>关键动作：让 AI 按”行为”生成，而不是按”方法”复读</h3><p>大部分团队用 AI 写测试的方式是选中一个类说”给它写单元测试”，得到的往往是把实现复述一遍的测试。有效的 prompt 应该强制 AI 先做行为分析。下面是可以直接用的模板：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">为下面的 Kotlin 类生成单元测试。要求：</span><br><span class="line">1. 先列出这个类的行为清单（等价类划分、边界值、异常路径、状态迁移），</span><br><span class="line">   每条行为一行，等我确认后再写代码。</span><br><span class="line">2. 每个 @Test 方法只验证一条行为，方法名用&quot;行为描述&quot;而非被测方法名，</span><br><span class="line">   例如 test_discount_not_applied_below_threshold 而不是 test_calculatePrice。</span><br><span class="line">3. 使用 Given-When-Then 三段结构，断言写业务预期（比如&quot;折扣不叠加&quot;），</span><br><span class="line">   禁止断言内部实现细节或把当前输出硬编码为期望值。</span><br><span class="line">4. 只 mock 类外部依赖（接口），禁止 mock 被测类自身的任何方法。</span><br><span class="line">5. 遵循仓库现有测试栈：JUnit4 + Truth + MockK。</span><br></pre></td></tr></table></figure>
+
+<p>区分”好测试”和”假测试”最直观的办法是对比同一函数的两种写法：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ❌ change detector：复读当前实现，实现错了测试也跟着&quot;对&quot;</span></span><br><span class="line"><span class="meta">@Test</span></span><br><span class="line"><span class="function"><span class="keyword">fun</span> `calculatePrice returns 95`<span class="params">()</span></span> &#123;</span><br><span class="line">    assertThat(coupon.apply(<span class="number">100</span>, Discount(<span class="number">0.05</span>))).isEqualTo(<span class="number">95.0</span>)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ✅ 行为断言：验证业务规则，实现重构后测试依然有效</span></span><br><span class="line"><span class="meta">@Test</span></span><br><span class="line"><span class="function"><span class="keyword">fun</span> `discount applies multiplicatively to base price`<span class="params">()</span></span> &#123;</span><br><span class="line">    <span class="keyword">val</span> price = coupon.apply(basePrice = <span class="number">100.0</span>, discount = Discount(<span class="number">0.05</span>))</span><br><span class="line">    assertThat(price).isEqualTo(<span class="number">95.0</span>)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">@Test</span></span><br><span class="line"><span class="function"><span class="keyword">fun</span> `discount never makes price negative`<span class="params">()</span></span> &#123;</span><br><span class="line">    <span class="keyword">val</span> price = coupon.apply(basePrice = <span class="number">10.0</span>, discount = Discount(<span class="number">2.0</span>))</span><br><span class="line">    assertThat(price).isEqualTo(<span class="number">0.0</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>两个测试跑起来都可能是绿的，但第一种在需求变更时只会制造噪音，第二种才是资产。</p>
+<h3 id="证据：Meta-大规模试验告诉我们-AI-测试的真实水平"><a href="#证据：Meta-大规模试验告诉我们-AI-测试的真实水平" class="headerlink" title="证据：Meta 大规模试验告诉我们 AI 测试的真实水平"></a>证据：Meta 大规模试验告诉我们 AI 测试的真实水平</h3><p>对”AI 生成的测试到底能不能用”这个问题，目前最有分量的一手证据来自 Meta。2024 年 2 月的论文《TestGen-LLM: Automatically Improving Unit Tests using Large Language Models》（arXiv:2402.09171）报告了在 Meta 真实代码库上的大规模试验：试验方式是对既有测试类做”过滤-推荐”式增量改进，模型推荐的测试用例中 75% 能正确编译构建，57% 能可靠通过，25% 提升了行覆盖率；经过构建、运行、覆盖等多重自动过滤后，仍有 73% 的建议被 Meta 工程师评审接受并合入代码库（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2402.09171">Meta &#x2F; arXiv</a>，2024-02，retrieved 2026-09-05）。试验覆盖近 2,000 个测试类，其中约 11.5% 的类最终拿到了可直接合入的改进测试——对一次 test-a-thon 来说，这是一批纯增量的质量资产。</p>
+<p>两个解读值得展开。第一，<strong>73% 的接受率是在机器过滤之后</strong>——如果跳过构建验证、运行验证、覆盖率比对直接把 AI 输出交给人工评审，实际效率会低得多，这正是后文质量门禁存在的原因。第二，<strong>这篇论文衡量质量用的是行覆盖率，变异分数提升被列为未来工作</strong>——连 Meta 都没有宣称”AI 生成的测试能提高缺陷检出能力”，所以覆盖率提升不等于测试变强，这个差距要靠变异测试来补（下文详述）。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 380" style="max-width:100%;height:auto;font-family:'Inter',system-ui,sans-serif" role="img" aria-labelledby="tgl-title tgl-desc">
+  <title id="tgl-title">TestGen-LLM 大规模试验关键指标</title>
+  <desc id="tgl-desc">Meta TestGen-LLM 论文（arXiv:2402.09171，2024）在真实代码库上的试验结果：75% 的推荐测试类能正确编译构建，73% 通过自动过滤后被工程师评审接受，57% 能可靠通过测试，25% 提升了行覆盖率。</desc>
+  <line x1="100" y1="45" x2="100" y2="320" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+  <line x1="210" y1="45" x2="210" y2="320" stroke="currentColor" stroke-width="1" opacity="0.08"/>
+  <line x1="320" y1="45" x2="320" y2="320" stroke="currentColor" stroke-width="1" opacity="0.08"/>
+  <line x1="430" y1="45" x2="430" y2="320" stroke="currentColor" stroke-width="1" opacity="0.08"/>
+  <line x1="540" y1="45" x2="540" y2="320" stroke="currentColor" stroke-width="1" opacity="0.08"/>
+  <rect x="100" y="55" width="330" height="50" rx="3" fill="#f97316"/>
+  <text x="92" y="85" text-anchor="end" font-size="13" fill="currentColor" opacity="0.8">正确编译构建</text>
+  <text x="438" y="85" font-size="14" font-weight="700" fill="currentColor">75%</text>
+  <rect x="100" y="120" width="321.2" height="50" rx="3" fill="#22c55e"/>
+  <text x="92" y="150" text-anchor="end" font-size="13" fill="currentColor" opacity="0.8">评审接受合入</text>
+  <text x="429" y="150" font-size="14" font-weight="700" fill="currentColor">73%</text>
+  <rect x="100" y="185" width="250.8" height="50" rx="3" fill="#38bdf8"/>
+  <text x="92" y="215" text-anchor="end" font-size="13" fill="currentColor" opacity="0.8">可靠通过测试</text>
+  <text x="359" y="215" font-size="14" font-weight="700" fill="currentColor">57%</text>
+  <rect x="100" y="250" width="110" height="50" rx="3" fill="#a78bfa"/>
+  <text x="92" y="280" text-anchor="end" font-size="13" fill="currentColor" opacity="0.8">提升行覆盖率</text>
+  <text x="218" y="280" font-size="14" font-weight="700" fill="currentColor">25%</text>
+  <text x="100" y="342" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.6">0%</text>
+  <text x="210" y="342" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.6">25%</text>
+  <text x="320" y="342" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.6">50%</text>
+  <text x="430" y="342" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.6">75%</text>
+  <text x="540" y="342" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.6">100%</text>
+  <text x="280" y="372" text-anchor="middle" font-size="10" fill="var(--chart-muted, currentColor)">Source: TestGen-LLM, arXiv:2402.09171 (2024)</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">数据来源：<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2402.09171">TestGen-LLM 论文</a>（2024），Meta 真实代码库大规模试验；"评审接受"为多重自动过滤后的数字</figcaption>
+</figure>
+
+<h3 id="验证闭环：变异测试是识别”假测试”的显微镜"><a href="#验证闭环：变异测试是识别”假测试”的显微镜" class="headerlink" title="验证闭环：变异测试是识别”假测试”的显微镜"></a>验证闭环：变异测试是识别”假测试”的显微镜</h3><p>覆盖率回答”代码有没有被执行”，变异测试回答”测试能不能发现代码错了”。pitest（Java&#x2F;Kotlin）或 Stryker（JS&#x2F;TS）会自动向业务代码注入突变（条件取反、返回值篡改），然后用你的测试套件去杀这些突变体——测试没杀死突变体，说明这条测试根本没在验证什么。Gradle 接入 pitest 只需要几行：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// build.gradle.kts</span></span><br><span class="line">plugins &#123;</span><br><span class="line">    id(<span class="string">&quot;info.solidsoft.pitest&quot;</span>) version <span class="string">&quot;1.15.0&quot;</span></span><br><span class="line">&#125;</span><br><span class="line">pitest &#123;</span><br><span class="line">    targetClasses.<span class="keyword">set</span>(listOf(<span class="string">&quot;com.example.app.business.*&quot;</span>))  <span class="comment">// 只对业务逻辑层做变异</span></span><br><span class="line">    threads.<span class="keyword">set</span>(<span class="number">4</span>)</span><br><span class="line">    mutationThreshold.<span class="keyword">set</span>(<span class="number">60</span>)   <span class="comment">// 低于 60% 变异分数的门禁失败，按团队基线调整</span></span><br><span class="line">    outputFormats.<span class="keyword">set</span>(listOf(<span class="string">&quot;HTML&quot;</span>, <span class="string">&quot;XML&quot;</span>))</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>落地建议是<strong>变异测试只对业务逻辑层开启</strong>（范围对应金字塔的 70%），阈值从现实基线起步逐步收紧，不要一上来就追求 90%——变异测试的运行成本随代码量线性增长，全库开启会让 CI 无法忍受。</p>
+<h3 id="规模化：遗留代码怎么批量补测试"><a href="#规模化：遗留代码怎么批量补测试" class="headerlink" title="规模化：遗留代码怎么批量补测试"></a>规模化：遗留代码怎么批量补测试</h3><p>试点验证 prompt 模板之后，遗留代码的批量路径是：先用 AI 生成<strong>特征测试（characterization tests）</strong>固化当前行为——这一步的断言就是”现状快照”，目的是给重构兜底而不是表达预期；再由人工把高风险路径的特征测试升级为行为断言；最后才开始重构。这个顺序把”AI 写得快”和”人审得准”各自用在了刀刃上。Java 存量代码较多的团队也可以评估 Diffblue Cover 这类专门工具（vendor 宣称可批量生成可编译的 JUnit 测试，属厂商营销口径，选型时以自己仓库的实测为准）。</p>
+<p>关于 JUnit、Truth、MockK 这些测试栈本身的选择依据，三年前那篇<a href="https://blog.shuying.me/2023/02/20/Android%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95%E5%AE%9E%E8%B7%B5/">《Android单元测试实践》</a>里有完整的对比，本文不再展开。</p>
+<h2 id="第三步：集成测试层（20-），人搭环境-AI-填矩阵"><a href="#第三步：集成测试层（20-），人搭环境-AI-填矩阵" class="headerlink" title="第三步：集成测试层（20%），人搭环境 AI 填矩阵"></a>第三步：集成测试层（20%），人搭环境 AI 填矩阵</h2><p>集成测试的成本大头在环境：数据库要用内存版还是测试容器、网络层要挡在 MockWebServer 后面、跨模块依赖要用测试双胞胎还是真实实现。这些决策 AI 帮不上忙——它不了解你的依赖注入拓扑和 CI 资源预算。</p>
+<p>所以这一层的分工是：<strong>人搭骨架，AI 填矩阵</strong>。</p>
+<p>人负责一次性搭好：Hilt 的测试模块、Room 的 in-memory 数据库、MockWebServer 或 WireMock 的桩服务、Testcontainers（服务端）、以及跑这些测试的独立 CI 任务（和单元测试分开，失败不阻塞合并）。</p>
+<p>骨架就位后，AI 的任务是把它了解的组件契约展开成用例矩阵：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">这是已经搭好的 OrderRepository 集成测试骨架（Room in-memory + MockWebServer）。</span><br><span class="line">请基于 OpenAPI 契约生成参数化测试用例，覆盖：</span><br><span class="line">- 每个端点的正常路径（断言 DB 落库结果，而不是只断言 response code）</span><br><span class="line">- 4xx/5xx 响应时 Room 的回滚行为</span><br><span class="line">- 分页边界：0 条、1 条、恰好一页、跨页</span><br><span class="line">- 网络超时与重复请求的幂等性</span><br><span class="line">输出为 JUnit4 @RunWith(Parameterized) 形式。</span><br></pre></td></tr></table></figure>
+
+<p>一句话定位 Robolectric：它让你在 JVM 上跑带 Android 框架的测试，严格说位于单元测试和真机集成测试之间，适合归入这一层管理，但别把它当 UI 测试的替代品。</p>
+<h2 id="第四步：UI-测试层（10-），克制是美德"><a href="#第四步：UI-测试层（10-），克制是美德" class="headerlink" title="第四步：UI 测试层（10%），克制是美德"></a>第四步：UI 测试层（10%），克制是美德</h2><p>UI 测试在金字塔顶端只有一个存在理由：验证用户关键路径真的能走通。它同时拥有三个”最”——最慢、最贵、最不稳定，所以配额只有 10%。</p>
+<p>Google 自己的数据说明了为什么必须克制：其测试博客披露，内部约 1.5% 的测试用例存在某种程度的 flaky——按 Google 的体量约是 1.6 万个用例——为此专门建设了自动检测、隔离队列与自动归因修复体系（<a target="_blank" rel="noopener" href="https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html">Flaky Tests at Google and How We Mitigate Them</a>，2016，retrieved 2026-09-05）。UI 测试是 flakiness 的重灾区，而 flaky 测试的真正成本不是红，而是团队学会了对红色视而不见。</p>
+<p>因此这一层的规则是：<strong>只盖关键路径</strong>——登录注册、下单支付、核心转化流程，一个 App 通常不超过 10 条。剩余的 UI 质量交给 Compose 语义测试和组件级快照。</p>
+<p>AI 在这一层的三个真实用途（以及一个反模式）：</p>
+<ol>
+<li><strong>生成与修复选择器、Page Object</strong>。UI 测试的维护大头是元素定位失效，AI 根据报错日志批量修复 <code>testID</code>&#x2F;语义树查找，是目前收益最确定的应用。</li>
+<li><strong>解释失败</strong>。把 instrumentation 失败堆栈丢给 AI，让它区分”真缺陷 &#x2F; 环境抖动 &#x2F; 测试自身问题”，能显著缩短 triage 时间。</li>
+<li><strong>从 PRD 提炼冒烟清单</strong>。让 AI 读需求文档，列出”上线前必须走通的用户旅程”，人来裁剪。</li>
+<li>**反模式：让 AI”给整个 App 生成 E2E 测试”**。这等于把维护地狱自动化，生成的数量越多，弃用得越快。</li>
+</ol>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Compose UI 测试：只盖关键路径，断言用户可见结果而非内部状态</span></span><br><span class="line"><span class="meta">@Test</span></span><br><span class="line"><span class="function"><span class="keyword">fun</span> <span class="title">login_success_showsHomeAndSavesSession</span><span class="params">()</span></span> &#123;</span><br><span class="line">    composeTestRule.onNodeWithTag(<span class="string">&quot;login_button&quot;</span>).performClick()</span><br><span class="line">    composeTestRule.onNodeWithTag(<span class="string">&quot;home_title&quot;</span>).assertIsDisplayed()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="质量门禁：别让-AI-把测试套件变成”全绿但没用的绿”"><a href="#质量门禁：别让-AI-把测试套件变成”全绿但没用的绿”" class="headerlink" title="质量门禁：别让 AI 把测试套件变成”全绿但没用的绿”"></a>质量门禁：别让 AI 把测试套件变成”全绿但没用的绿”</h2><p>AI 批量生成测试之后，测试套件面临的最大风险不是少，而是<strong>假</strong>。三个反模式占了我见过的绝大多数问题：</p>
+<table>
+<thead>
+<tr>
+<th>反模式</th>
+<th>典型表现</th>
+<th>检测手段</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>change detector（复读实现）</td>
+<td>断言值来自当前实现的输出；重构一次挂一片</td>
+<td>变异测试杀突变体；评审时问”这条断言的业务依据是什么”</td>
+</tr>
+<tr>
+<td>覆盖率注水</td>
+<td>无断言测试、<code>assertNotNull</code> 满天飞、行覆盖 90% 缺陷照逃逸</td>
+<td>变异分数趋势；断言密度抽查</td>
+</tr>
+<tr>
+<td>mock 一切</td>
+<td>所有依赖都是 mock，真实依赖的行为漂移无人知晓</td>
+<td>集成层用真实依赖（测试容器&#x2F;内存库）；契约测试</td>
+</tr>
+</tbody></table>
+<p>其中一个数据点值得写进你的评审话术：Veracode 的 2025 GenAI 代码安全报告用 100 多个大模型生成代码并做安全测试，发现 45% 的测试场景中 AI 生成的代码引入了安全缺陷（<a target="_blank" rel="noopener" href="https://www.veracode.com/resources/analytic-reports/2025-genai-code-security-report/">Veracode 2025 GenAI Code Security Report</a>，2025，retrieved 2026-09-05）。</p>
+<p><strong>AI 生成的业务代码尚且需要扫描，AI 生成的测试没有理由免检。</strong></p>
+<p>落到 CI 上的门禁清单（按 ROI 排序）：</p>
+<ol>
+<li><strong>新代码行覆盖阈值</strong>（如 70%），只对增量生效，不动全库存量；</li>
+<li><strong>业务逻辑层变异分数阈值</strong>（如 60%），只对 70% 那一层开启；</li>
+<li><strong>flaky 隔离队列</strong>：连续翻转的用例自动隔离 + 每周人工清理，重试次数设上限（重试不等于修复）；</li>
+<li><strong>AI 生成测试打标与抽检</strong>：PR 描述里声明 AI 生成比例，评审人至少抽检断言语义；</li>
+<li><strong>评审清单固定一问</strong>：这条测试挂了，我会知道什么坏了？答不上来的测试不应该合入。</li>
+</ol>
+<p>Google Testing Blog 在《Code Coverage Best Practices》里的结论依然是最好的注脚：代码覆盖是”发现未测试代码的有用工具”，但高覆盖率远不等于测试有效，盲目追求覆盖率数字反而会激励低质量测试（<a target="_blank" rel="noopener" href="https://testing.googleblog.com/2020/08/code-coverage-best-practices.html">Google Testing Blog</a>，retrieved 2026-09-05）。</p>
+<h2 id="六周落地路线图"><a href="#六周落地路线图" class="headerlink" title="六周落地路线图"></a>六周落地路线图</h2><p>把前面的内容压进一张表，按周推进，每一步都有可度量的产出：</p>
+<table>
+<thead>
+<tr>
+<th>周次</th>
+<th>动作</th>
+<th>产出</th>
+<th>度量指标</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>W1</td>
+<td>CI 数据基线 + 选定试点模块</td>
+<td>基线表、试点模块清单</td>
+<td>三层分布、时长、flaky 率</td>
+</tr>
+<tr>
+<td>W2</td>
+<td>单测产线跑通：prompt 模板 + 评审清单</td>
+<td>试点模块 AI 生成测试合入</td>
+<td>建议接受率（对照 Meta 的 73%）</td>
+</tr>
+<tr>
+<td>W3</td>
+<td>变异测试与覆盖门禁接入 CI</td>
+<td>pitest&#x2F;Stryker 报告 + 增量门禁</td>
+<td>变异分数基线</td>
+</tr>
+<tr>
+<td>W4</td>
+<td>集成层模板：环境骨架 + AI 用例矩阵</td>
+<td>可复用的集成测试模板</td>
+<td>集成用例数、该层 CI 时长</td>
+</tr>
+<tr>
+<td>W5</td>
+<td>UI 关键路径收敛</td>
+<td>冒烟测试集 + flaky 隔离队列</td>
+<td>E2E 数量、flaky 率</td>
+</tr>
+<tr>
+<td>W6</td>
+<td>复盘与推广机制</td>
+<td>指标汇报、其他模块推广排期</td>
+<td>缺陷逃逸率、单测执行时长</td>
+</tr>
+</tbody></table>
+<p>两条提醒：第一，全程盯<strong>缺陷逃逸率、变异分数、CI 时长、flaky 率</strong>这四个指标，不要盯”测试数量”——数量是唯一一个可以被 AI 无成本刷高的指标。第二，路线图能走多快取决于评审产能而不是生成产能，W2 的评审清单值得花一天时间打磨。</p>
+<h2 id="常见问题"><a href="#常见问题" class="headerlink" title="常见问题"></a>常见问题</h2><h3 id="AI-生成的测试能直接信任吗？"><a href="#AI-生成的测试能直接信任吗？" class="headerlink" title="AI 生成的测试能直接信任吗？"></a>AI 生成的测试能直接信任吗？</h3><p>不能直接信任，但也不需要逐行从零审查。正确的流程是机器验证先过滤一轮——编译、运行、覆盖率比对、变异分数——再把幸存者交给人工评审断言语义。Meta 的经验是机器过滤后 73% 的建议可被接受，跳过机器过滤直接人审，效率会大幅下降。</p>
+<h3 id="覆盖率目标定多少合适？"><a href="#覆盖率目标定多少合适？" class="headerlink" title="覆盖率目标定多少合适？"></a>覆盖率目标定多少合适？</h3><p>分层设定：业务逻辑层新增代码行覆盖 70-80% 起步，配合变异分数趋势观察；不要设全库一刀切的阈值。覆盖率能帮你发现漏网之鱼，但回答不了”测试是否有效”——这也是 Google Testing Blog 反复强调的立场。</p>
+<h3 id="遗留代码完全没有测试，从哪开始？"><a href="#遗留代码完全没有测试，从哪开始？" class="headerlink" title="遗留代码完全没有测试，从哪开始？"></a>遗留代码完全没有测试，从哪开始？</h3><p>不要从 E2E 开始补（那是把最贵的手段用在没有兜底的地方）。顺序是：高价值纯函数优先 → AI 生成特征测试固化现状 → 人工升级关键路径断言 → 重构。选择标准是”改这里最容易引入事故”，而不是”这里的代码最好写测试”。</p>
+<h3 id="70-x2F-20-x2F-10-是硬性规定吗？"><a href="#70-x2F-20-x2F-10-是硬性规定吗？" class="headerlink" title="70&#x2F;20&#x2F;10 是硬性规定吗？"></a>70&#x2F;20&#x2F;10 是硬性规定吗？</h3><p>不是。Google 官方文档原文就说各类测试占比”可能因应用的用例不同而异”，Mike Cohn 给的也是一个方向性框架。数字可以浮动，结构不能倒挂：单元测试永远应该占大头，UI 测试永远应该最克制。前端和全栈团队如果发现集成层占比天然更高，Kent C. Dodds 的 Testing Trophy（集成测试占最大比重）是更贴合的参考框架。</p>
+<h2 id="写在最后"><a href="#写在最后" class="headerlink" title="写在最后"></a>写在最后</h2><p>回到开头的账：70&#x2F;20&#x2F;10 难落地，是因为手写测试的人力太贵；AI 把”写”的成本打下来了，落地就只剩下一个真问题——<strong>验证的产能</strong>。本文的路径可以压缩成三句话：用 CI 数据量出基线，让 AI 主攻金字塔底座，用变异测试和门禁守住”绿”的成色。</p>
+<p>AI 不改变金字塔的形状，改变的是”谁在堆金字塔”：人从断言的作者变成断言的评审者。团队接入 AI 编码工具的具体工作流——包括怎么把验证环节嵌进 Agent 的执行循环——可以参阅此前的<a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">《Android CLI 与 Android Skills 最佳实践》</a>。</p>
+<p>你团队的测试分布现在是什么形状？欢迎在评论区贴出你的基线表，倒金字塔不可耻，看不见它才可耻。</p>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地",
+  "description": "AI 让写测试的成本暴跌，但测试套件并没有自动变好。本文给出 70/20/10 测试金字塔在 AI 时代的落地路径：CI 数据基线、按层人机分工、变异测试防假测试、六周推进路线图。",
+  "datePublished": "2026-09-05",
+  "dateModified": "2026-09-05",
+  "author": {
+    "@type": "Person",
+    "name": "枢影",
+    "url": "https://blog.shuying.me/about/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "枢影Kernel",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://blog.shuying.me/images/avatar.png"
+    }
+  },
+  "image": "https://blog.shuying.me/images/ai-unit-test-pyramid-cover.png",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://blog.shuying.me/2026/09/05/ai-unit-test-pyramid/"
+  },
+  "keywords": ["单元测试", "AI 编码", "测试金字塔", "软件质量", "CI/CD"]
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "AI 生成的测试能直接信任吗？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "不能直接信任。正确流程是机器验证先过滤（编译、运行、覆盖率、变异分数），再由人工评审断言语义。Meta TestGen-LLM 试验中，经过多重机器过滤后仍有 73% 的建议被工程师接受，跳过机器过滤直接人审会大幅降低效率。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "覆盖率目标定多少合适？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "分层设定：业务逻辑层新增代码行覆盖 70-80% 起步，配合变异分数趋势观察，不设全库一刀切阈值。覆盖率的作用是发现未测试的代码，不等于测试质量本身。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "遗留代码完全没有测试，从哪开始？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "不要从 E2E 开始补。顺序是：高价值纯函数优先，AI 生成特征测试固化现状，人工升级关键路径断言，然后再重构。选择标准是改哪里最容易引入事故。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "70/20/10 是硬性规定吗？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "不是。Google 官方文档说明各类测试占比可能因应用而异。数字可以浮动，结构不能倒挂：单元测试应占大头，UI 测试应最克制。集成层占比天然更高的团队可参考 Kent C. Dodds 的 Testing Trophy 框架。"
+      }
+    }
+  ]
+}
+</script>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/09/05/2026-09-05-ai-unit-test-pyramid/" title="AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地">https://blog.shuying.me/2026/09/05/2026-09-05-ai-unit-test-pyramid/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95/" rel="tag"># 单元测试</a>
+              <a href="/tags/AI-%E7%BC%96%E7%A0%81/" rel="tag"># AI 编码</a>
+              <a href="/tags/%E6%B5%8B%E8%AF%95%E9%87%91%E5%AD%97%E5%A1%94/" rel="tag"># 测试金字塔</a>
+              <a href="/tags/%E8%BD%AF%E4%BB%B6%E8%B4%A8%E9%87%8F/" rel="tag"># 软件质量</a>
+              <a href="/tags/CI-CD/" rel="tag"># CI/CD</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/08/25/2026-08-25-codex-vs-deepseek-harness/" rel="prev" title="工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比">
+      <i class="fa fa-chevron-left"></i> 工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/09/21/2026-09-21-skillopt-code-review-skill/" rel="next" title="从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能">
+      从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B5%8B%E8%AF%95%E9%87%91%E5%AD%97%E5%A1%94%E6%B2%A1%E8%BF%87%E6%97%B6%EF%BC%8C%E8%BF%87%E6%97%B6%E7%9A%84%E6%98%AF%E2%80%9D%E6%89%80%E6%9C%89%E6%B5%8B%E8%AF%95%E9%83%BD%E6%89%8B%E5%86%99%E2%80%9D"><span class="nav-number">1.</span> <span class="nav-text">测试金字塔没过时，过时的是”所有测试都手写”</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%AC%AC%E4%B8%80%E6%AD%A5%EF%BC%9A%E7%94%A8-CI-%E6%95%B0%E6%8D%AE%E9%87%8F%E5%87%BA%E7%9C%9F%E5%AE%9E%E5%88%86%E5%B8%83%EF%BC%8C%E8%80%8C%E4%B8%8D%E6%98%AF%E6%8B%8D%E8%84%91%E8%A2%8B%E5%AE%9A%E6%AF%94%E4%BE%8B"><span class="nav-number">2.</span> <span class="nav-text">第一步：用 CI 数据量出真实分布，而不是拍脑袋定比例</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%AC%AC%E4%BA%8C%E6%AD%A5%EF%BC%9A%E4%B8%9A%E5%8A%A1%E9%80%BB%E8%BE%91%E5%B1%82%EF%BC%8870-%EF%BC%89%EF%BC%8CAI-%E7%9A%84%E4%B8%BB%E6%88%98%E5%9C%BA%E4%B9%9F%E6%98%AF%E9%AA%8C%E8%AF%81%E7%9A%84%E4%B8%BB%E6%88%98%E5%9C%BA"><span class="nav-number">3.</span> <span class="nav-text">第二步：业务逻辑层（70%），AI 的主战场也是验证的主战场</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%88%E5%9C%88%E5%9C%B0%EF%BC%9A%E4%BB%80%E4%B9%88%E4%BB%A3%E7%A0%81%E5%80%BC%E5%BE%97%E8%AE%A9-AI-%E5%86%99%E6%B5%8B%E8%AF%95"><span class="nav-number">3.1.</span> <span class="nav-text">先圈地：什么代码值得让 AI 写测试</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E5%8A%A8%E4%BD%9C%EF%BC%9A%E8%AE%A9-AI-%E6%8C%89%E2%80%9D%E8%A1%8C%E4%B8%BA%E2%80%9D%E7%94%9F%E6%88%90%EF%BC%8C%E8%80%8C%E4%B8%8D%E6%98%AF%E6%8C%89%E2%80%9D%E6%96%B9%E6%B3%95%E2%80%9D%E5%A4%8D%E8%AF%BB"><span class="nav-number">3.2.</span> <span class="nav-text">关键动作：让 AI 按”行为”生成，而不是按”方法”复读</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%AF%81%E6%8D%AE%EF%BC%9AMeta-%E5%A4%A7%E8%A7%84%E6%A8%A1%E8%AF%95%E9%AA%8C%E5%91%8A%E8%AF%89%E6%88%91%E4%BB%AC-AI-%E6%B5%8B%E8%AF%95%E7%9A%84%E7%9C%9F%E5%AE%9E%E6%B0%B4%E5%B9%B3"><span class="nav-number">3.3.</span> <span class="nav-text">证据：Meta 大规模试验告诉我们 AI 测试的真实水平</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AA%8C%E8%AF%81%E9%97%AD%E7%8E%AF%EF%BC%9A%E5%8F%98%E5%BC%82%E6%B5%8B%E8%AF%95%E6%98%AF%E8%AF%86%E5%88%AB%E2%80%9D%E5%81%87%E6%B5%8B%E8%AF%95%E2%80%9D%E7%9A%84%E6%98%BE%E5%BE%AE%E9%95%9C"><span class="nav-number">3.4.</span> <span class="nav-text">验证闭环：变异测试是识别”假测试”的显微镜</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%A7%84%E6%A8%A1%E5%8C%96%EF%BC%9A%E9%81%97%E7%95%99%E4%BB%A3%E7%A0%81%E6%80%8E%E4%B9%88%E6%89%B9%E9%87%8F%E8%A1%A5%E6%B5%8B%E8%AF%95"><span class="nav-number">3.5.</span> <span class="nav-text">规模化：遗留代码怎么批量补测试</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%AC%AC%E4%B8%89%E6%AD%A5%EF%BC%9A%E9%9B%86%E6%88%90%E6%B5%8B%E8%AF%95%E5%B1%82%EF%BC%8820-%EF%BC%89%EF%BC%8C%E4%BA%BA%E6%90%AD%E7%8E%AF%E5%A2%83-AI-%E5%A1%AB%E7%9F%A9%E9%98%B5"><span class="nav-number">4.</span> <span class="nav-text">第三步：集成测试层（20%），人搭环境 AI 填矩阵</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%AC%AC%E5%9B%9B%E6%AD%A5%EF%BC%9AUI-%E6%B5%8B%E8%AF%95%E5%B1%82%EF%BC%8810-%EF%BC%89%EF%BC%8C%E5%85%8B%E5%88%B6%E6%98%AF%E7%BE%8E%E5%BE%B7"><span class="nav-number">5.</span> <span class="nav-text">第四步：UI 测试层（10%），克制是美德</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%B4%A8%E9%87%8F%E9%97%A8%E7%A6%81%EF%BC%9A%E5%88%AB%E8%AE%A9-AI-%E6%8A%8A%E6%B5%8B%E8%AF%95%E5%A5%97%E4%BB%B6%E5%8F%98%E6%88%90%E2%80%9D%E5%85%A8%E7%BB%BF%E4%BD%86%E6%B2%A1%E7%94%A8%E7%9A%84%E7%BB%BF%E2%80%9D"><span class="nav-number">6.</span> <span class="nav-text">质量门禁：别让 AI 把测试套件变成”全绿但没用的绿”</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD%E5%91%A8%E8%90%BD%E5%9C%B0%E8%B7%AF%E7%BA%BF%E5%9B%BE"><span class="nav-number">7.</span> <span class="nav-text">六周落地路线图</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98"><span class="nav-number">8.</span> <span class="nav-text">常见问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#AI-%E7%94%9F%E6%88%90%E7%9A%84%E6%B5%8B%E8%AF%95%E8%83%BD%E7%9B%B4%E6%8E%A5%E4%BF%A1%E4%BB%BB%E5%90%97%EF%BC%9F"><span class="nav-number">8.1.</span> <span class="nav-text">AI 生成的测试能直接信任吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%A6%86%E7%9B%96%E7%8E%87%E7%9B%AE%E6%A0%87%E5%AE%9A%E5%A4%9A%E5%B0%91%E5%90%88%E9%80%82%EF%BC%9F"><span class="nav-number">8.2.</span> <span class="nav-text">覆盖率目标定多少合适？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%81%97%E7%95%99%E4%BB%A3%E7%A0%81%E5%AE%8C%E5%85%A8%E6%B2%A1%E6%9C%89%E6%B5%8B%E8%AF%95%EF%BC%8C%E4%BB%8E%E5%93%AA%E5%BC%80%E5%A7%8B%EF%BC%9F"><span class="nav-number">8.3.</span> <span class="nav-text">遗留代码完全没有测试，从哪开始？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#70-x2F-20-x2F-10-%E6%98%AF%E7%A1%AC%E6%80%A7%E8%A7%84%E5%AE%9A%E5%90%97%EF%BC%9F"><span class="nav-number">8.4.</span> <span class="nav-text">70&#x2F;20&#x2F;10 是硬性规定吗？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%86%99%E5%9C%A8%E6%9C%80%E5%90%8E"><span class="nav-number">9.</span> <span class="nav-text">写在最后</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

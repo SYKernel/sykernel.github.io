@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="深度拆解 Google AI Edge Gallery 的三层架构（LiteRT &#x2F; LiteRT-LM &#x2F; Gallery App），覆盖推理引擎、模型管理、Function Calling、MCP 集成、会话连续性的完整实现，附 Kotlin 代码示例与性能数据。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现">
+<meta property="og:url" content="https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="深度拆解 Google AI Edge Gallery 的三层架构（LiteRT &#x2F; LiteRT-LM &#x2F; Gallery App），覆盖推理引擎、模型管理、Function Calling、MCP 集成、会话连续性的完整实现，附 Kotlin 代码示例与性能数据。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/ai-edge-gallery-cover.png">
+<meta property="article:published_time" content="2026-08-22T10:00:00.000Z">
+<meta property="article:modified_time" content="2026-08-21T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="MCP">
+<meta property="article:tag" content="AI Edge Gallery">
+<meta property="article:tag" content="端侧 AI">
+<meta property="article:tag" content="LiteRT">
+<meta property="article:tag" content="Gemma">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/ai-edge-gallery-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-08-22 18:00:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-08-22T18:00:00+08:00">2026-08-22</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">深度拆解 Google AI Edge Gallery 的三层架构（LiteRT / LiteRT-LM / Gallery App），覆盖推理引擎、模型管理、Function Calling、MCP 集成、会话连续性的完整实现，附 Kotlin 代码示例与性能数据。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/ai-edge-gallery-cover.png" itemprop="contentUrl">
+        </div>
+        <p>端侧 AI 正在从”能跑起来的 demo”迈向”可量产的产品”。这两者之间的鸿沟，远比想象中宽阔：模型怎么分发与校验、推理引擎如何利用 NPU、长对话的 KV Cache 怎么持久化、本地模型如何安全地调用系统功能——每一层都是工程问题。</p>
+<p>Google 的 <a target="_blank" rel="noopener" href="https://github.com/google-ai-edge/gallery">AI Edge Gallery</a> 是目前最值得研究的参考实现。截至 2026-08-20，这个 24.5k stars 的开源项目（Apache 2.0，Kotlin 编写）不是一个玩具 demo，而是 Google 开源的端侧 AI 参考实现——其底层推理引擎 LiteRT-LM 同时驱动着 Chrome、Chromebook Plus 和 Pixel Watch 的生产级端侧 AI 体验。Google 产品经理 Alice Zheng 在官方访谈中透露，该应用上线首月模型下载量即超过 500 万次（<a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=O6499i4TFYA">YouTube 官方访谈</a>，2026-06）。它把从模型下载、推理加速、Function Calling 到 Agent MCP 协议的全链路都做到了可运行、可复刻的程度。</p>
+<p>本文基于 2026 年 8 月的 GitHub 仓库（最新更新 2026-08-20）与 Google 官方技术博客，自底向上拆解这套架构，提炼可直接借鉴的工程模式。</p>
+<blockquote>
+<p><strong>核心要点</strong></p>
+<ul>
+<li><strong>三层架构清晰分工</strong>：LiteRT（底层推理引擎，TFLite 继任者）→ LiteRT-LM（LLM 编排层，会话管理 + KV Cache 序列化 + MTP）→ Gallery App（Kotlin 应用层），每层职责独立、可单独复用。</li>
+<li><strong>模型管理工程化</strong>：通过 <code>model_allowlists</code> JSON 声明模型元数据（大小、最低内存、加速器、任务类型），App 按设备能力筛选可运行模型，避免 OOM。</li>
+<li><strong>Function Calling 端侧闭环</strong>：<code>@Tool</code>&#x2F;<code>@ToolParam</code> 注解 + FunctionGemma 270M 微调模型 + 两条执行路径（JavaScript Skills 与 Native App Intents），实现纯离线的自然语言设备控制。</li>
+<li><strong>MCP 让端侧 Agent 突破沙箱</strong>：通过 Streamable HTTP 动态导入工具定义到系统 prompt，本地推理决策 + 远程 MCP 执行的混合架构，兼顾隐私与能力扩展。</li>
+</ul>
+</blockquote>
+<h2 id="项目定位与技术全景"><a href="#项目定位与技术全景" class="headerlink" title="项目定位与技术全景"></a>项目定位与技术全景</h2><p>AI Edge Gallery 的 GitHub 仓库简介写得很直接：”A gallery that showcases on-device ML&#x2F;GenAI use cases and allows people to try and use models locally”。但它真正的价值不在于”展示”，而在于它是一套<strong>生产级端侧 AI 技术栈的完整开源参考</strong>。</p>
+<p><a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">关于 AI Agent 接入可验证的 Android 开发流程</a> 的实践此前已有讨论，而 AI Edge Gallery 展示的是另一条路径：不是让 Agent 调用 App，而是让 App 本身成为 AI 运行时。</p>
+<p>整个技术栈分三层，自底向上依次是：</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 380" style="max-width:100%;height:auto;" role="img" aria-label="AI Edge Gallery 三层技术栈架构图">
+  <title>AI Edge Gallery 三层技术栈架构</title>
+  <desc>展示从底层到应用层的三层架构：LiteRT 推理引擎（C++ 核心，GPU/NPU 加速）、LiteRT-LM 编排层（会话管理、KV Cache、MTP、Tool Use）、Gallery App 应用层（Kotlin、Compose、MVVM、模型管理、Function Calling、MCP 集成）。</desc>
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4285f4"/><stop offset="100%" stop-color="#00d4aa"/>
+    </linearGradient>
+  </defs>
+  <!-- 应用层 -->
+  <rect x="40" y="30" width="740" height="90" rx="12" fill="#0d1f2d" stroke="url(#g1)" stroke-width="2.5"/>
+  <text x="70" y="58" font-family="sans-serif" font-size="16" fill="#00d4aa" font-weight="bold">应用层 · Gallery App（Kotlin）</text>
+  <rect x="70" y="72" width="130" height="35" rx="6" fill="#0d1117" stroke="#00d4aa" stroke-width="1"/>
+  <text x="135" y="94" font-family="monospace" font-size="10" fill="#00d4aa" text-anchor="middle">模型管理</text>
+  <rect x="215" y="72" width="130" height="35" rx="6" fill="#0d1117" stroke="#00d4aa" stroke-width="1"/>
+  <text x="280" y="94" font-family="monospace" font-size="10" fill="#00d4aa" text-anchor="middle">Function Calling</text>
+  <rect x="360" y="72" width="100" height="35" rx="6" fill="#0d1117" stroke="#00d4aa" stroke-width="1"/>
+  <text x="410" y="94" font-family="monospace" font-size="10" fill="#00d4aa" text-anchor="middle">MCP 集成</text>
+  <rect x="475" y="72" width="100" height="35" rx="6" fill="#0d1117" stroke="#00d4aa" stroke-width="1"/>
+  <text x="525" y="94" font-family="monospace" font-size="10" fill="#00d4aa" text-anchor="middle">Agent Skills</text>
+  <rect x="590" y="72" width="160" height="35" rx="6" fill="#0d1117" stroke="#00d4aa" stroke-width="1"/>
+  <text x="670" y="94" font-family="monospace" font-size="10" fill="#00d4aa" text-anchor="middle">Compose UI · MVVM</text>
+
+  <!-- 编排层 -->
+  <rect x="40" y="150" width="740" height="90" rx="12" fill="#0d1f2d" stroke="url(#g1)" stroke-width="2.5"/>
+  <text x="70" y="178" font-family="sans-serif" font-size="16" fill="#4285f4" font-weight="bold">编排层 · LiteRT-LM</text>
+  <rect x="70" y="192" width="120" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="130" y="214" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">会话管理</text>
+  <rect x="205" y="192" width="120" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="265" y="214" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">KV Cache 序列化</text>
+  <rect x="340" y="192" width="110" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="395" y="214" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">MTP 多 token</text>
+  <rect x="465" y="192" width="110" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="520" y="214" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">Tool Use API</text>
+  <rect x="590" y="192" width="160" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="670" y="214" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">多模态输入（图/音频）</text>
+
+  <!-- 引擎层 -->
+  <rect x="40" y="270" width="740" height="90" rx="12" fill="#0d1f2d" stroke="url(#g1)" stroke-width="2.5"/>
+  <text x="70" y="298" font-family="sans-serif" font-size="16" fill="#4285f4" font-weight="bold">引擎层 · LiteRT（C++ 核心）</text>
+  <rect x="70" y="312" width="120" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="130" y="334" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">GPU 加速</text>
+  <rect x="205" y="312" width="120" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="265" y="334" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">NPU 加速</text>
+  <rect x="340" y="312" width="120" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="400" y="334" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">量化推理（int4）</text>
+  <rect x="475" y="312" width="120" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="535" y="334" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">跨平台抽象</text>
+  <rect x="610" y="312" width="140" height="35" rx="6" fill="#0d1117" stroke="#4285f4" stroke-width="1"/>
+  <text x="680" y="334" font-family="monospace" font-size="10" fill="#4285f4" text-anchor="middle">TFLite 继任者</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">AI Edge Gallery 三层技术栈：每层职责独立，可单独集成到自己的项目</figcaption>
+</figure>
+
+<p>理解了这个分层，就能把握 Gallery 的核心设计哲学：<strong>把推理复杂性下沉到 C++ 引擎层，把 LLM 专用逻辑收敛到编排层，应用层只关心业务</strong>。这意味着开发者可以按需取用——只需要推理能力就集成 LiteRT，需要完整 LLM 会话就引入 LiteRT-LM，需要参考 Agent 架构就研究 Gallery App 源码。更多 Android 效率工程与 <a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">AI Agent 工具化实践</a> 的内容，可参阅此前的 Android CLI 文章。</p>
+<h2 id="推理引擎层：LiteRT-与-LiteRT-LM-的分工"><a href="#推理引擎层：LiteRT-与-LiteRT-LM-的分工" class="headerlink" title="推理引擎层：LiteRT 与 LiteRT-LM 的分工"></a>推理引擎层：LiteRT 与 LiteRT-LM 的分工</h2><p>端侧 LLM 推理的工程难度集中在两点：<strong>算力利用</strong>和<strong>内存效率</strong>。Gallery 用两层来分别解决。</p>
+<h3 id="LiteRT：底层推理引擎"><a href="#LiteRT：底层推理引擎" class="headerlink" title="LiteRT：底层推理引擎"></a>LiteRT：底层推理引擎</h3><p>LiteRT 是 TensorFlow Lite 的继任者，Google 在 <a target="_blank" rel="noopener" href="https://developers.google.com/edge/litert-lm/overview">官方文档</a> 中将其定位为”on-device framework for high-performance ML &amp; GenAI deployment on edge platforms”。它是一个 C++ 核心，负责把量化后的模型（通常 int4）映射到设备的 GPU 或 NPU 上执行。它的跨平台抽象让同一份模型文件能在 Android、iOS、桌面甚至 Raspberry Pi 上运行。</p>
+<h3 id="LiteRT-LM：LLM-专用编排层"><a href="#LiteRT-LM：LLM-专用编排层" class="headerlink" title="LiteRT-LM：LLM 专用编排层"></a>LiteRT-LM：LLM 专用编排层</h3><p>LiteRT 解决通用 ML 推理，但 LLM 有自己的特殊需求——会话状态、KV Cache、流式输出、工具调用。这些由 LiteRT-LM 编排层处理。Google 在 <a target="_blank" rel="noopener" href="https://developers.googleblog.com/blazing-fast-on-device-genai-with-litert-lm">开发者博客</a> 中称其为”production-ready orchestration layer to run LLMs with LiteRT”。</p>
+<p>LiteRT-LM 的 Kotlin API 设计得相当干净，核心是 <code>Engine</code> → <code>Conversation</code> 两级模型：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> com.google.ai.edge.litertlm.*</span><br><span class="line"><span class="keyword">import</span> kotlinx.coroutines.flow.collect</span><br><span class="line"></span><br><span class="line"><span class="comment">// 1. 创建引擎，加载 .litertlm 模型文件</span></span><br><span class="line"><span class="keyword">val</span> engineConfig = EngineConfig(modelPath = <span class="string">&quot;/path/to/gemma-4-e2b.litertlm&quot;</span>)</span><br><span class="line">Engine(engineConfig).use &#123; engine -&gt;</span><br><span class="line">    engine.initialize()</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 2. 创建会话，可配置系统指令和采样参数</span></span><br><span class="line">    <span class="keyword">val</span> conversationConfig = ConversationConfig(</span><br><span class="line">        systemInstruction = Contents.of(<span class="string">&quot;You are a helpful assistant.&quot;</span>),</span><br><span class="line">        samplerConfig = SamplerConfig(topK = <span class="number">10</span>, topP = <span class="number">0.95</span>, temperature = <span class="number">0.8</span>),</span><br><span class="line">    )</span><br><span class="line">    <span class="keyword">val</span> conversation = engine.createConversation(conversationConfig)</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 3. 流式发送消息，通过 Kotlin Flow 接收 token</span></span><br><span class="line">    conversation.sendMessageAsync(<span class="string">&quot;法国的首都是哪里？&quot;</span>)</span><br><span class="line">        .collect &#123; token -&gt; print(token.toString()) &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这段代码展示了 Gallery 底层调用的核心路径：<code>Engine</code> 管理模型生命周期，<code>Conversation</code> 管理单次对话上下文，<code>sendMessageAsync</code> 返回 <code>Flow&lt;String&gt;</code> 实现流式输出。<code>SamplerConfig</code> 暴露了 topK&#x2F;topP&#x2F;temperature 三个核心采样参数——Gallery 的 Prompt Lab 功能正是基于这些参数构建的。</p>
+<h3 id="性能数据：MTP-带来的飞跃"><a href="#性能数据：MTP-带来的飞跃" class="headerlink" title="性能数据：MTP 带来的飞跃"></a>性能数据：MTP 带来的飞跃</h3><p>LiteRT-LM 近期引入的 <strong>Multi-Token Prediction（MTP）</strong> 是一项关键优化。传统自回归模型一次只生成一个 token，MTP 允许一次预测多个 token，据 <a target="_blank" rel="noopener" href="https://developers.googleblog.com/blazing-fast-on-device-genai-with-litert-lm">Google 官方博客</a>介绍，MTP 在 GPU 后端上可使 Gemma 4 模型推理速度提升至 3 倍。</p>
+<p>根据 <a target="_blank" rel="noopener" href="https://developers.google.com/edge/litert-lm/overview">Google 官方基准数据</a>（访问于 2026-08-20），Gemma 4 E2B 模型的表现如下：</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" style="max-width:100%;height:auto;" role="img" aria-label="Gemma 4 E2B 各设备推理性能对比图">
+  <title>Gemma 4 E2B 推理性能对比</title>
+  <desc>柱状图对比 Gemma4-E2B 在 Samsung S26 Ultra、iPhone 17 Pro、MacBook Pro M4 Max 三款设备上的 GPU Prefill 和 GPU Decode 速度（tokens/second）。MacBook Pro M4 Max GPU Prefill 达 7835 tk/s，Decode 160 tk/s。</desc>
+  <defs>
+    <linearGradient id="prefill" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#4285f4"/><stop offset="100%" stop-color="#00d4aa"/>
+    </linearGradient>
+    <linearGradient id="decode" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#ea4335"/><stop offset="100%" stop-color="#fbbc04"/>
+    </linearGradient>
+  </defs>
+  <!-- 标题 -->
+  <text x="360" y="25" font-family="sans-serif" font-size="14" fill="#ffffff" text-anchor="middle" font-weight="bold">Gemma4-E2B 推理速度（tokens/second）</text>
+  <!-- Y 轴 -->
+  <line x1="80" y1="50" x2="80" y2="300" stroke="#6b7280" stroke-width="1"/>
+  <line x1="80" y1="300" x2="690" y2="300" stroke="#6b7280" stroke-width="1"/>
+  <!-- Y 轴标签 -->
+  <text x="75" y="305" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="end">0</text>
+  <text x="75" y="240" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="end">2k</text>
+  <text x="75" y="175" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="end">4k</text>
+  <text x="75" y="110" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="end">6k</text>
+  <text x="75" y="55" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="end">8k</text>
+  <!-- Samsung S26 Ultra -->
+  <rect x="110" y="165" width="70" height="135" fill="url(#prefill)" rx="3"/>
+  <text x="145" y="158" font-family="sans-serif" font-size="10" fill="#00d4aa" text-anchor="middle">3808</text>
+  <rect x="190" y="294" width="35" height="6" fill="url(#decode)" rx="2"/>
+  <text x="207" y="289" font-family="sans-serif" font-size="9" fill="#fbbc04" text-anchor="middle">52</text>
+  <text x="145" y="320" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">S26 Ultra</text>
+  <!-- iPhone 17 Pro -->
+  <rect x="290" y="190" width="70" height="110" fill="url(#prefill)" rx="3"/>
+  <text x="325" y="183" font-family="sans-serif" font-size="10" fill="#00d4aa" text-anchor="middle">2878</text>
+  <rect x="370" y="294" width="35" height="6" fill="url(#decode)" rx="2"/>
+  <text x="387" y="289" font-family="sans-serif" font-size="9" fill="#fbbc04" text-anchor="middle">57</text>
+  <text x="325" y="320" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">iPhone 17 Pro</text>
+  <!-- MacBook Pro M4 Max -->
+  <rect x="470" y="85" width="70" height="215" fill="url(#prefill)" rx="3"/>
+  <text x="505" y="78" font-family="sans-serif" font-size="10" fill="#00d4aa" text-anchor="middle">7835</text>
+  <rect x="550" y="288" width="35" height="12" fill="url(#decode)" rx="2"/>
+  <text x="567" y="283" font-family="sans-serif" font-size="9" fill="#fbbc04" text-anchor="middle">160</text>
+  <text x="505" y="320" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">M4 Max</text>
+  <!-- 图例 -->
+  <rect x="110" y="340" width="12" height="12" fill="url(#prefill)" rx="2"/>
+  <text x="128" y="350" font-family="sans-serif" font-size="10" fill="#9ca3af">GPU Prefill</text>
+  <rect x="200" y="340" width="12" height="12" fill="url(#decode)" rx="2"/>
+  <text x="218" y="350" font-family="sans-serif" font-size="10" fill="#9ca3af">GPU Decode</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">数据来源：Google AI Edge LiteRT-LM 官方基准（2026-08），Gemma4-E2B int4 模型</figcaption>
+</figure>
+
+<p>这组数据揭示了端侧推理的现状：<strong>Prefill 速度极快</strong>（现代手机 GPU 可达 3000+ tk&#x2F;s），但 <strong>Decode 速度仍是瓶颈</strong>（52-57 tk&#x2F;s）。这也是 Gallery 强调会话恢复能力的原因——快速 prefill 让”重新加载长对话上下文”变得几乎无感。</p>
+<h2 id="模型管理：从-Hugging-Face-到设备本地"><a href="#模型管理：从-Hugging-Face-到设备本地" class="headerlink" title="模型管理：从 Hugging Face 到设备本地"></a>模型管理：从 Hugging Face 到设备本地</h2><p>Gallery 面临的第一个工程问题是模型分发。一个 int4 量化的 Gemma 4 E2B 模型约 2.58 GB，E4B 约 3.65 GB——不可能打包进 APK，必须运行时下载。而不同设备的内存和算力差异巨大，不能让用户下载一个跑不动的模型。</p>
+<h3 id="model-allowlists：声明式模型注册"><a href="#model-allowlists：声明式模型注册" class="headerlink" title="model_allowlists：声明式模型注册"></a>model_allowlists：声明式模型注册</h3><p>Gallery 的解法是 <a target="_blank" rel="noopener" href="https://github.com/google-ai-edge/gallery/blob/main/model_allowlists/1_0_6.json">model_allowlists JSON</a>——一份声明式的模型清单，每个模型条目包含完整的元数据。以 Gemma 3n E2B（约 3.16 GB）为例：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Gemma-3n-E2B-it&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;modelId&quot;</span><span class="punctuation">:</span> <span class="string">&quot;google/gemma-3n-E2B-it-litert-lm&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;modelFile&quot;</span><span class="punctuation">:</span> <span class="string">&quot;gemma-3n-E2B-it-int4.litertlm&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;description&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Gemma 3n E2B int4 量化版本&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;sizeInBytes&quot;</span><span class="punctuation">:</span> <span class="number">3388604416</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;minDeviceMemoryInGb&quot;</span><span class="punctuation">:</span> <span class="number">8</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;commitHash&quot;</span><span class="punctuation">:</span> <span class="string">&quot;73b019b63436d346f68dd9c1dbfd117eb264d888&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;llmSupportImage&quot;</span><span class="punctuation">:</span> <span class="keyword">true</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;llmSupportAudio&quot;</span><span class="punctuation">:</span> <span class="keyword">true</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;defaultConfig&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;topK&quot;</span><span class="punctuation">:</span> <span class="number">64</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;topP&quot;</span><span class="punctuation">:</span> <span class="number">0.95</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;temperature&quot;</span><span class="punctuation">:</span> <span class="number">1.0</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;maxTokens&quot;</span><span class="punctuation">:</span> <span class="number">4096</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;accelerators&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cpu,gpu&quot;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;taskTypes&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;llm_chat&quot;</span><span class="punctuation">,</span> <span class="string">&quot;llm_prompt_lab&quot;</span><span class="punctuation">,</span> <span class="string">&quot;llm_ask_image&quot;</span><span class="punctuation">,</span> <span class="string">&quot;llm_ask_audio&quot;</span><span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>这个设计有几个值得借鉴的工程决策：</p>
+<p><strong>设备能力门控</strong>。<code>minDeviceMemoryInGb</code> 字段让 App 在展示模型列表前先检测设备内存，过滤掉无法运行的模型，避免用户下载 4GB 模型后 OOM 崩溃。<code>accelerators</code> 字段声明模型支持的加速器类型，App 据此选择最优后端。</p>
+<p><strong>模型版本追踪</strong>。<code>commitHash</code> 绑定 Hugging Face 仓库的特定 commit，确保下载的模型文件可追溯、可复现。这对于排查”模型行为变化”类问题至关重要。</p>
+<p><strong>任务类型映射</strong>。<code>taskTypes</code> 声明模型适用于哪些功能（chat、prompt_lab、ask_image、ask_audio），<code>bestForTaskTypes</code> 标注最优场景。这让 App 能为不同任务推荐最合适的模型——比如多模态任务优先推荐支持图像&#x2F;音频的模型。</p>
+<h3 id="下载与加载流程"><a href="#下载与加载流程" class="headerlink" title="下载与加载流程"></a>下载与加载流程</h3><p><code>ModelManagerViewModel</code>（Gallery 源码中的核心组件）负责编排整个下载-验证-加载流程：从 Hugging Face 通过 <code>modelId</code> 拉取 <code>.litertlm</code> 文件，存入 <code>externalFilesDir</code>，校验文件大小与 commitHash，最后交给 LiteRT-LM 引擎初始化。用户也可以直接粘贴 Hugging Face 模型卡片 URL 导入自定义模型——这是 Gallery 对社区模型生态的开放姿态。</p>
+<p>值得注意的是模型格式之争。Gallery 早期使用 MediaPipe LLM Inference API 的 <code>.task</code> 格式，后逐步迁移到 LiteRT-LM 的 <code>.litertlm</code> 格式。前者通过 MediaPipe Tasks 封装，后者直接对接 LiteRT-LM Engine。从 model_allowlists 的演进看，新模型已统一采用 <code>.litertlm</code>，<code>.task</code> 格式主要保留给旧模型兼容。</p>
+<p>下面的实操演示视频展示了从模型下载到多模态对话的完整体验，可以直观感受端侧推理的实际速度：</p>
+<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;margin:1.5rem 0;border-radius:8px;">
+<iframe src="https://www.youtube.com/embed/lMJvzosYJ3g" title="Google AI Edge Gallery Review: Free Offline AI on Your Phone" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen></iframe>
+</div>
+<noscript>视频：Google AI Edge Gallery Review — 实操演示模型下载与离线多模态对话 (https://www.youtube.com/watch?v=lMJvzosYJ3g)</noscript>
+
+<h2 id="Function-Calling-架构：让本地模型调用系统功能"><a href="#Function-Calling-架构：让本地模型调用系统功能" class="headerlink" title="Function Calling 架构：让本地模型调用系统功能"></a>Function Calling 架构：让本地模型调用系统功能</h2><p>端侧 LLM 如果只能聊天，价值有限。真正让 Gallery 从”聊天 demo”升级为”Agent 平台”的，是其 Function Calling 架构——让本地模型理解自然语言指令，生成结构化函数调用，执行设备操作。</p>
+<h3 id="注解驱动的工具声明"><a href="#注解驱动的工具声明" class="headerlink" title="注解驱动的工具声明"></a>注解驱动的工具声明</h3><p>Gallery 的 <a target="_blank" rel="noopener" href="https://developers.googleblog.com/on-device-function-calling-in-google-ai-edge-gallery">Function Calling 指南</a> 展示了一套注解驱动的工具声明机制。开发者定义 <code>ActionType</code> 枚举标注可用操作类型，用 <code>@Tool</code> 和 <code>@ToolParam</code> 注解描述工具的入参与语义：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 定义操作类型枚举</span></span><br><span class="line"><span class="keyword">enum</span> <span class="class"><span class="keyword">class</span> <span class="title">ActionType</span> </span>&#123;</span><br><span class="line">    SET_ALARM,</span><br><span class="line">    SEND_SMS,</span><br><span class="line">    TOGGLE_FLASHLIGHT,</span><br><span class="line">    ADJUST_VOLUME,</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 用 @Tool 声明一个可被模型调用的工具</span></span><br><span class="line"><span class="meta">@Tool(description = <span class="string">&quot;Set an alarm for a specific time&quot;</span>)</span></span><br><span class="line"><span class="keyword">data</span> <span class="class"><span class="keyword">class</span> <span class="title">SetAlarmTool</span></span>(</span><br><span class="line">    <span class="meta">@ToolParam(description = <span class="string">&quot;Hour in 24-hour format (0-23)&quot;</span>)</span></span><br><span class="line">    <span class="keyword">val</span> hour: <span class="built_in">Int</span>,</span><br><span class="line">    <span class="meta">@ToolParam(description = <span class="string">&quot;Minute (0-59)&quot;</span>)</span></span><br><span class="line">    <span class="keyword">val</span> minute: <span class="built_in">Int</span>,</span><br><span class="line">    <span class="meta">@ToolParam(description = <span class="string">&quot;Optional label for the alarm&quot;</span>)</span></span><br><span class="line">    <span class="keyword">val</span> label: String? = <span class="literal">null</span>,</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p>这套注解会被编译处理，生成工具的 schema 描述注入到模型的系统 prompt 中。当用户说”帮我设一个明天早上 7 点的闹钟”时，模型根据 schema 生成包含 <code>ActionType.SET_ALARM</code> 和具体参数的 JSON 调用，App 的 <code>performAction</code> handler 据此执行实际操作。</p>
+<h3 id="FunctionGemma-270M：专为工具调用微调的小模型"><a href="#FunctionGemma-270M：专为工具调用微调的小模型" class="headerlink" title="FunctionGemma 270M：专为工具调用微调的小模型"></a>FunctionGemma 270M：专为工具调用微调的小模型</h3><p>Gallery 的 Mobile Actions 功能背后不是 Gemma 4，而是一个专门的 <strong>FunctionGemma 270M</strong> 微调模型。这是一个只有 2.7 亿参数的超小模型，专门为结构化输出和函数调用微调。它的存在说明一个重要的工程取舍：<strong>工具调用不需要大模型的推理能力，需要的是可靠的 JSON 输出</strong>。用 270M 小模型替代 2B&#x2F;4B 大模型做工具调用，既省内存又快。</p>
+<p>Tiny Garden 小游戏是这种能力的趣味展示：玩家用自然语言”在第一行种向日葵并浇水”，270M 模型将其分解为 <code>plantCrop</code> 和 <code>waterCrop</code> 两个函数调用，带上网格坐标参数，驱动游戏逻辑——全程离线，无一次服务器请求。</p>
+<h3 id="两条执行路径"><a href="#两条执行路径" class="headerlink" title="两条执行路径"></a>两条执行路径</h3><p>Gallery 的 Agent Skills 支持两条执行路径，体现对”工具”的广义理解：</p>
+<p><strong>JavaScript Skills</strong>：自定义逻辑运行在隐藏的 WebView 中，可访问完整的 Web 生态——<code>fetch()</code> 请求、CDN 库、甚至 WebAssembly。这让 Agent 能执行如”查询 Wikipedia”这类需要网络请求的任务，同时保持在 App 沙箱内。</p>
+<p><strong>Native App Intents</strong>：利用 OS 内建能力，目前支持发送邮件和短信，可通过扩展源码添加更多。这条路径直接调用 Android 系统 API，延迟最低。</p>
+<p><a href="https://blog.shuying.me/2026/08/22/android16-appfunctions-framework/">关于端侧 AI 与 Agent 工具化实践</a> 的更多内容，可参阅此前 AppFunctions 框架一文——两者在”让 App 能力可被 AI 调用”这个方向上殊途同归。</p>
+<h2 id="MCP-集成：端侧-Agent-的工具协议"><a href="#MCP-集成：端侧-Agent-的工具协议" class="headerlink" title="MCP 集成：端侧 Agent 的工具协议"></a>MCP 集成：端侧 Agent 的工具协议</h2><p>Function Calling 解决了”调用 App 内部功能”的问题，但 Agent 的能力往往需要突破 App 沙箱——查询日历、读取邮件、操作外部服务。Gallery 的答案是集成 <a target="_blank" rel="noopener" href="https://developers.googleblog.com/a-smarter-google-ai-edge-gallery-mcp-integration-notifications-and-session-continuity">Model Context Protocol（MCP）</a>。</p>
+<h3 id="混合架构：本地决策-远程执行"><a href="#混合架构：本地决策-远程执行" class="headerlink" title="混合架构：本地决策 + 远程执行"></a>混合架构：本地决策 + 远程执行</h3><p>Gallery 的 MCP 集成采用 Streamable HTTP 传输，架构是一个精心设计的混合体：</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" style="max-width:100%;height:auto;" role="img" aria-label="MCP 混合架构图">
+  <title>MCP 混合架构：本地推理决策 + 远程 MCP 执行</title>
+  <desc>展示 MCP 混合架构流程：用户提问后，Gemma 4 在设备本地推理决定需要哪个工具，生成函数调用，请求发送给远程 MCP Server（如家庭电脑或云端）执行，结果返回给本地模型继续推理。</desc>
+  <defs>
+    <linearGradient id="local" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00d4aa"/><stop offset="100%" stop-color="#4285f4"/>
+    </linearGradient>
+    <linearGradient id="remote" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ea4335"/><stop offset="100%" stop-color="#fbbc04"/>
+    </linearGradient>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <!-- 设备本地 -->
+  <rect x="20" y="40" width="320" height="220" rx="12" fill="#0d1f2d" stroke="url(#local)" stroke-width="2.5"/>
+  <text x="180" y="68" font-family="sans-serif" font-size="14" fill="#00d4aa" text-anchor="middle" font-weight="bold">📱 设备本地（完全离线）</text>
+  <rect x="50" y="85" width="260" height="50" rx="8" fill="#0d1117" stroke="#00d4aa" stroke-width="1"/>
+  <text x="180" y="108" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">Gemma 4 本地推理</text>
+  <text x="180" y="125" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">读取 MCP 工具 schema → 决策</text>
+  <rect x="50" y="150" width="260" height="50" rx="8" fill="#0d1117" stroke="#00d4aa" stroke-width="1"/>
+  <text x="180" y="173" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">生成函数调用 JSON</text>
+  <text x="180" y="190" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">"需要调用 calendar.query_events"</text>
+  <rect x="50" y="215" width="260" height="35" rx="8" fill="#0d1117" stroke="#00d4aa" stroke-width="1" stroke-dasharray="4 2"/>
+  <text x="180" y="237" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">接收结果 → 继续本地推理</text>
+
+  <!-- 远程 MCP Server -->
+  <rect x="480" y="40" width="320" height="220" rx="12" fill="#0d1f2d" stroke="url(#remote)" stroke-width="2.5"/>
+  <text x="640" y="68" font-family="sans-serif" font-size="14" fill="#fbbc04" text-anchor="middle" font-weight="bold">🖥️ MCP Server（远程）</text>
+  <rect x="510" y="85" width="260" height="50" rx="8" fill="#0d1117" stroke="#fbbc04" stroke-width="1"/>
+  <text x="640" y="108" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">家庭电脑 / 云端服务</text>
+  <text x="640" y="125" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">Streamable HTTP 传输</text>
+  <rect x="510" y="150" width="260" height="50" rx="8" fill="#0d1117" stroke="#fbbc04" stroke-width="1"/>
+  <text x="640" y="173" font-family="sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">执行实际操作</text>
+  <text x="640" y="190" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">查询日历 / 读取邮件 / API 调用</text>
+  <rect x="510" y="215" width="260" height="35" rx="8" fill="#0d1117" stroke="#fbbc04" stroke-width="1" stroke-dasharray="4 2"/>
+  <text x="640" y="237" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">返回结构化结果</text>
+
+  <!-- 连接箭头 -->
+  <line x1="340" y1="120" x2="475" y2="120" stroke="#6b7280" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="408" y="112" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">调用</text>
+  <line x1="475" y1="175" x2="340" y2="175" stroke="#6b7280" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="408" y="168" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">结果</text>
+
+  <!-- 隐私标注 -->
+<p>  <text x="180" y="285" font-family="sans-serif" font-size="10" fill="#00d4aa" text-anchor="middle">✓ 推理与决策不离设备</text><br>  <text x="640" y="285" font-family="sans-serif" font-size="10" fill="#fbbc04" text-anchor="middle">仅工具执行走网络</text><br></svg></p>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">MCP 混合架构：推理决策在本地，工具执行可远程——隐私与能力的平衡</figcaption>
+</figure>
+
+<p>关键在于分工：用户注册一个 MCP URL 后，App 动态拉取该 server 暴露的工具定义和资源 schema，<strong>注入到本地 Gemma 4 的系统 prompt 中</strong>。当用户提问时，模型在设备本地完成推理和决策——“这个请求需要调用哪个工具”——生成函数调用后，请求才发送给 MCP server 执行。</p>
+<p>这种设计把<strong>最敏感的环节（推理过程、用户 prompt、模型上下文）留在设备上</strong>，只有最终的工具调用请求走网络。相比把整个对话发给云端 Agent，这个架构在隐私和能力之间找到了平衡点。官方博客举的例子很直观：连接 Google Workspace MCP 后，手机上的 Gemma 4 能查询你的日历事件或检查收件箱——推理在手机上完成，只是查询请求发给了 MCP server。</p>
+<h2 id="会话连续性与多模态"><a href="#会话连续性与多模态" class="headerlink" title="会话连续性与多模态"></a>会话连续性与多模态</h2><p>端侧 AI 应用的用户体验，很大程度上取决于会话管理的工程质量。Gallery 在这方面的实现基于 LiteRT-LM 的原生能力。</p>
+<h3 id="KV-Cache-序列化：会话恢复的秘密"><a href="#KV-Cache-序列化：会话恢复的秘密" class="headerlink" title="KV Cache 序列化：会话恢复的秘密"></a>KV Cache 序列化：会话恢复的秘密</h3><p>长对话的”冷启动”一直是端侧 LLM 的痛点——重新加载几千 token 的历史上下文，传统做法要重新 prefill 整个序列，耗时数秒。LiteRT-LM 的解法是 <strong>KV Cache 原生序列化</strong>：把模型内部的 Key-Value 缓存状态（代表已处理的上下文历史）序列化保存，恢复会话时直接加载，跳过 prefill 阶段。</p>
+<p>Google 在 <a target="_blank" rel="noopener" href="https://developers.googleblog.com/blazing-fast-on-device-genai-with-litert-lm">LiteRT-LM 技术博客</a> 中解释了这套机制的工程价值：保存上下文状态减少了重复计算，绕过了返回会话时的重型 prefill 阶段。配合现代手机 GPU 3000+ tk&#x2F;s 的 prefill 速度，即使需要重新 prefill，长会话恢复也几乎无感。</p>
+<p>Gallery 据此实现了持久化聊天历史——支持文本、图像、音频输入的完整会话状态保存与恢复。用户中断对话后回来，之前的上下文、发过的图片、录过的音频都在。</p>
+<h3 id="多模态：文本-图像-音频"><a href="#多模态：文本-图像-音频" class="headerlink" title="多模态：文本 + 图像 + 音频"></a>多模态：文本 + 图像 + 音频</h3><p>Gallery 的多模态支持覆盖三种输入：文本聊天、图像理解（Ask Image）、音频转录（Audio Scribe）。这依赖 Gemma 4 模型的多模态能力——E2B 和 E4B 变体支持图像和音频输入，能处理视觉谜题、识别物体、转录语音。</p>
+<p>模型的多模态能力在 model_allowlists 中通过 <code>llmSupportImage</code> 和 <code>llmSupportAudio</code> 两个字段声明，App 据此决定是否在对应功能入口展示该模型。这种声明式设计让多模态支持与模型管理解耦——新增一个支持视频的模型，只需在 JSON 中加一个字段，不需要改 App 代码。</p>
+<p>官方访谈视频中，Google 产品经理 Alice Zheng 演示了两个典型多模态场景——离线解释”天空为什么是蓝色”和用音频输入生成结构化购物清单：</p>
+<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;margin:1.5rem 0;border-radius:8px;">
+<iframe src="https://www.youtube.com/embed/O6499i4TFYA" title="Gemma 4 and the AI Edge Gallery: On-Device AI Gets an Upgrade" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen></iframe>
+</div>
+<noscript>视频：Gemma 4 and the AI Edge Gallery — Google 官方访谈，演示离线推理与音频多模态场景 (https://www.youtube.com/watch?v=O6499i4TFYA)</noscript>
+
+<h2 id="对开发者的参考价值与借鉴"><a href="#对开发者的参考价值与借鉴" class="headerlink" title="对开发者的参考价值与借鉴"></a>对开发者的参考价值与借鉴</h2><p>AI Edge Gallery 的价值不止于一个可用的 App，更在于它提供了一套<strong>可复刻的端侧 AI 工程模板</strong>。以下是最值得借鉴的架构模式：</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 280" style="max-width:100%;height:auto;" role="img" aria-label="端侧 AI 应用可借鉴的架构模式汇总">
+  <title>端侧 AI 应用可借鉴的五大架构模式</title>
+  <desc>展示从 AI Edge Gallery 中可借鉴的五大架构模式：分层解耦（引擎-编排-应用三层独立）、声明式模型管理（JSON 元数据驱动）、注解驱动工具系统（@Tool/@ToolParam）、混合 Agent 架构（本地推理+远程执行）、KV Cache 持久化（会话状态序列化）。</desc>
+  <defs>
+    <linearGradient id="pat" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4285f4"/><stop offset="100%" stop-color="#00d4aa"/>
+    </linearGradient>
+  </defs>
+  <!-- 模式1 -->
+  <rect x="20" y="20" width="220" height="110" rx="10" fill="#0d1f2d" stroke="url(#pat)" stroke-width="2"/>
+  <text x="130" y="45" font-family="sans-serif" font-size="13" fill="#00d4aa" text-anchor="middle" font-weight="bold">① 分层解耦</text>
+  <text x="130" y="68" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">引擎 / 编排 / 应用</text>
+  <text x="130" y="84" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">三层独立可替换</text>
+  <text x="130" y="105" font-family="sans-serif" font-size="9" fill="#6b7280" text-anchor="middle">按需取用，降低耦合</text>
+
+  <!-- 模式2 -->
+  <rect x="270" y="20" width="220" height="110" rx="10" fill="#0d1f2d" stroke="url(#pat)" stroke-width="2"/>
+  <text x="380" y="45" font-family="sans-serif" font-size="13" fill="#00d4aa" text-anchor="middle" font-weight="bold">② 声明式模型管理</text>
+  <text x="380" y="68" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">JSON 元数据驱动</text>
+  <text x="380" y="84" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">设备能力门控</text>
+  <text x="380" y="105" font-family="sans-serif" font-size="9" fill="#6b7280" text-anchor="middle">版本可追溯，避免 OOM</text>
+
+  <!-- 模式3 -->
+  <rect x="520" y="20" width="220" height="110" rx="10" fill="#0d1f2d" stroke="url(#pat)" stroke-width="2"/>
+  <text x="630" y="45" font-family="sans-serif" font-size="13" fill="#00d4aa" text-anchor="middle" font-weight="bold">③ 注解驱动工具系统</text>
+  <text x="630" y="68" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">@Tool / @ToolParam</text>
+  <text x="630" y="84" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">schema 自动生成</text>
+  <text x="630" y="105" font-family="sans-serif" font-size="9" fill="#6b7280" text-anchor="middle">小模型专做工具调用</text>
+
+  <!-- 模式4 -->
+  <rect x="145" y="150" width="220" height="110" rx="10" fill="#0d1f2d" stroke="url(#pat)" stroke-width="2"/>
+  <text x="255" y="175" font-family="sans-serif" font-size="13" fill="#4285f4" text-anchor="middle" font-weight="bold">④ 混合 Agent 架构</text>
+  <text x="255" y="198" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">本地推理 + 远程执行</text>
+  <text x="255" y="214" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">MCP 工具协议接入</text>
+  <text x="255" y="235" font-family="sans-serif" font-size="9" fill="#6b7280" text-anchor="middle">隐私与能力平衡</text>
+
+  <!-- 模式5 -->
+  <rect x="395" y="150" width="220" height="110" rx="10" fill="#0d1f2d" stroke="url(#pat)" stroke-width="2"/>
+  <text x="505" y="175" font-family="sans-serif" font-size="13" fill="#4285f4" text-anchor="middle" font-weight="bold">⑤ KV Cache 持久化</text>
+  <text x="505" y="198" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">会话状态序列化</text>
+  <text x="505" y="214" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">快速恢复长上下文</text>
+  <text x="505" y="235" font-family="sans-serif" font-size="9" fill="#6b7280" text-anchor="middle">跳过 prefill，体验无感</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">从 AI Edge Gallery 提炼的五大可借鉴架构模式</figcaption>
+</figure>
+
+<p><strong>如何在自己项目中复用</strong>：如果只需要端侧推理能力，直接集成 LiteRT-LM 的 Kotlin 或 Swift API，几行代码就能跑起 Gemma 模型。如果需要模型管理参考，clone Gallery 仓库研究 <code>ModelManagerViewModel</code> 和 model_allowlists 的实现。如果要构建 Agent，重点研究 Function Calling 指南和 MCP 集成的源码——这两块是市面上少有的端侧 Agent 生产级参考。</p>
+<p>一个容易被忽视的借鉴点是<strong>小模型专精化</strong>。Gallery 用 270M 的 FunctionGemma 做工具调用，而不是用 2B&#x2F;4B 的 Gemma 4，体现了”用最合适的模型做最合适的任务”的工程思维。在自己的端侧 AI 项目中，把推理、工具调用、安全过滤等任务分给不同大小的专用模型，往往比用一个通才大模型更高效。</p>
+<h2 id="常见问题"><a href="#常见问题" class="headerlink" title="常见问题"></a>常见问题</h2><h3 id="AI-Edge-Gallery-支持哪些设备和模型？"><a href="#AI-Edge-Gallery-支持哪些设备和模型？" class="headerlink" title="AI Edge Gallery 支持哪些设备和模型？"></a>AI Edge Gallery 支持哪些设备和模型？</h3><p>Android 12 及以上、iOS 17 及以上。模型方面，官方支持 Gemma 4 E2B&#x2F;E4B、Gemma 3n E2B&#x2F;E4B、Gemma 3 1B&#x2F;4B 等，均可从 Hugging Face LiteRT Community 下载。也支持通过模型卡片 URL 导入兼容的自定义模型。设备需满足模型的 <code>minDeviceMemoryInGb</code> 要求（E2B 至少 8GB，E4B 至少 12GB）。</p>
+<h3 id="LiteRT-LM-和-MediaPipe-LLM-Inference-API-是什么关系？"><a href="#LiteRT-LM-和-MediaPipe-LLM-Inference-API-是什么关系？" class="headerlink" title="LiteRT-LM 和 MediaPipe LLM Inference API 是什么关系？"></a>LiteRT-LM 和 MediaPipe LLM Inference API 是什么关系？</h3><p>两者都是 Google AI Edge 体系的端侧 LLM 推理方案。MediaPipe LLM Inference API 是较早的方案，使用 <code>.task</code> 格式，通过 MediaPipe Tasks 封装。LiteRT-LM 是更新的编排层，使用 <code>.litertlm</code> 格式，直接对接 LiteRT 引擎，原生支持会话管理、KV Cache 序列化、MTP 和 Tool Use。AI Edge Gallery 正在从 MediaPipe 方案向 LiteRT-LM 迁移，新模型优先采用 <code>.litertlm</code>。</p>
+<h3 id="MCP-集成需要联网吗？"><a href="#MCP-集成需要联网吗？" class="headerlink" title="MCP 集成需要联网吗？"></a>MCP 集成需要联网吗？</h3><p>需要。MCP 工具的执行通过 Streamable HTTP 连接远程 MCP server，这一步需要网络。但关键的推理和决策环节——模型读取用户 prompt、理解 MCP 工具 schema、决定调用哪个工具、生成函数调用——全部在设备本地完成。只有最终的工具执行请求走网络。如果不需要 MCP 工具，纯聊天和 Function Calling 完全离线。</p>
+<h3 id="普通-Android-开发者如何开始？"><a href="#普通-Android-开发者如何开始？" class="headerlink" title="普通 Android 开发者如何开始？"></a>普通 Android 开发者如何开始？</h3><p>三条路径：一是直接下载 <a target="_blank" rel="noopener" href="https://play.google.com/store/apps/details?id=com.google.ai.edge.gallery">AI Edge Gallery</a> 体验功能；二是 clone <a target="_blank" rel="noopener" href="https://github.com/google-ai-edge/gallery">GitHub 仓库</a> 研究源码，重点看 <code>ModelManagerViewModel</code> 和 Function Calling 相关实现；三是直接集成 <a target="_blank" rel="noopener" href="https://github.com/google-ai-edge/LiteRT-LM">LiteRT-LM</a> 到自己的项目，用几行 Kotlin 代码跑起端侧推理。官方还提供了 <a target="_blank" rel="noopener" href="https://developers.googleblog.com/on-device-function-calling-in-google-ai-edge-gallery">Function Calling 指南</a>，手把手教你在自己的 App 中实现工具调用。更多端侧 AI 与 <a href="https://blog.shuying.me/2026/08/22/android16-appfunctions-framework/">Agent 工具化框架解析</a> 的内容，可参阅 AppFunctions 框架一文。</p>
+<h2 id="结论"><a href="#结论" class="headerlink" title="结论"></a>结论</h2><p>AI Edge Gallery 的架构解析到这里，一个清晰的图景浮现出来：端侧 AI 的生产级实现，不是把一个模型塞进 App 这么简单，而是一套从引擎层到应用层的系统工程。</p>
+<p>回顾要点：</p>
+<ul>
+<li><strong>三层架构</strong>：LiteRT 推理引擎 → LiteRT-LM 编排层 → Gallery 应用层，每层职责独立、可单独集成。</li>
+<li><strong>工程化决策</strong>：声明式模型管理（JSON 元数据 + 设备门控）、注解驱动工具系统（<code>@Tool</code> + 小模型专精）、MCP 混合 Agent 架构（本地决策 + 远程执行）。</li>
+<li><strong>性能关键</strong>：MTP 多 token 预测提升解码速度、KV Cache 序列化实现会话无感恢复、int4 量化控制模型体积。</li>
+<li><strong>开放生态</strong>：Apache 2.0 全开源，Hugging Face 模型导入，MCP 标准协议接入，社区 Skills 扩展。</li>
+</ul>
+<p>对于关注端侧 AI 的 Android 开发者，这个仓库是当前最完整的生产级参考。不是每个项目都需要从头实现这些——但理解这套架构的分层逻辑和工程取舍，能让你在面对自己的端侧 AI 需求时，知道哪些该自研、哪些该复用、哪些该等待生态成熟。</p>
+<p>端侧 AI 的基础设施正在快速成型，Google 把自己的生产技术栈开放出来，既是示范也是邀约。趁早研究这套参考实现，是在为未来的端侧 AI 产品积累架构判断力。</p>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现",
+  "description": "深度拆解 Google AI Edge Gallery 的三层架构（LiteRT / LiteRT-LM / Gallery App），覆盖推理引擎、模型管理、Function Calling、MCP 集成、会话连续性的完整实现，附 Kotlin 代码示例与性能数据。",
+  "datePublished": "2026-08-22",
+  "dateModified": "2026-08-22",
+  "author": {
+    "@type": "Person",
+    "name": "枢影",
+    "url": "https://blog.shuying.me/about/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "枢影Kernel",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://blog.shuying.me/images/avatar.png"
+    }
+  },
+  "image": "https://blog.shuying.me/images/ai-edge-gallery-cover.png",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://blog.shuying.me/2026/08/22/ai-edge-gallery-architecture/"
+  },
+  "keywords": ["AI Edge Gallery", "端侧 AI", "LiteRT", "Gemma", "MCP", "Function Calling"]
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "AI Edge Gallery 支持哪些设备和模型？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Android 12 及以上、iOS 17 及以上。官方支持 Gemma 4 E2B/E4B、Gemma 3n E2B/E4B、Gemma 3 1B/4B 等，均可从 Hugging Face LiteRT Community 下载。也支持通过模型卡片 URL 导入兼容的自定义模型。设备需满足模型的 minDeviceMemoryInGb 要求（E2B 至少 8GB，E4B 至少 12GB）。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "LiteRT-LM 和 MediaPipe LLM Inference API 是什么关系？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "两者都是 Google AI Edge 体系的端侧 LLM 推理方案。MediaPipe LLM Inference API 是较早方案，使用 .task 格式。LiteRT-LM 是更新的编排层，使用 .litertlm 格式，原生支持会话管理、KV Cache 序列化、MTP 和 Tool Use。AI Edge Gallery 正在向 LiteRT-LM 迁移，新模型优先采用 .litertlm。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "MCP 集成需要联网吗？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "需要。MCP 工具执行通过 Streamable HTTP 连接远程 MCP server，需要网络。但推理和决策环节全部在设备本地完成。只有最终的工具执行请求走网络。纯聊天和 Function Calling 完全离线。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "普通 Android 开发者如何开始？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "三条路径：下载 AI Edge Gallery 体验功能；clone GitHub 仓库研究源码；直接集成 LiteRT-LM 到自己的项目。官方还提供 Function Calling 指南，教你实现工具调用。"
+      }
+    }
+  ]
+}
+</script>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/" title="Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现">https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/MCP/" rel="tag"># MCP</a>
+              <a href="/tags/AI-Edge-Gallery/" rel="tag"># AI Edge Gallery</a>
+              <a href="/tags/%E7%AB%AF%E4%BE%A7-AI/" rel="tag"># 端侧 AI</a>
+              <a href="/tags/LiteRT/" rel="tag"># LiteRT</a>
+              <a href="/tags/Gemma/" rel="tag"># Gemma</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/08/22/2026-08-22-android16-appfunctions-framework/" rel="prev" title="把 App 变成 AI 的智能体工具箱：Android 16 AppFunctions 框架详解">
+      <i class="fa fa-chevron-left"></i> 把 App 变成 AI 的智能体工具箱：Android 16 AppFunctions 框架详解
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/08/25/2026-08-25-codex-vs-deepseek-harness/" rel="next" title="工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比">
+      工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A1%B9%E7%9B%AE%E5%AE%9A%E4%BD%8D%E4%B8%8E%E6%8A%80%E6%9C%AF%E5%85%A8%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">项目定位与技术全景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E7%90%86%E5%BC%95%E6%93%8E%E5%B1%82%EF%BC%9ALiteRT-%E4%B8%8E-LiteRT-LM-%E7%9A%84%E5%88%86%E5%B7%A5"><span class="nav-number">2.</span> <span class="nav-text">推理引擎层：LiteRT 与 LiteRT-LM 的分工</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#LiteRT%EF%BC%9A%E5%BA%95%E5%B1%82%E6%8E%A8%E7%90%86%E5%BC%95%E6%93%8E"><span class="nav-number">2.1.</span> <span class="nav-text">LiteRT：底层推理引擎</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#LiteRT-LM%EF%BC%9ALLM-%E4%B8%93%E7%94%A8%E7%BC%96%E6%8E%92%E5%B1%82"><span class="nav-number">2.2.</span> <span class="nav-text">LiteRT-LM：LLM 专用编排层</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%80%A7%E8%83%BD%E6%95%B0%E6%8D%AE%EF%BC%9AMTP-%E5%B8%A6%E6%9D%A5%E7%9A%84%E9%A3%9E%E8%B7%83"><span class="nav-number">2.3.</span> <span class="nav-text">性能数据：MTP 带来的飞跃</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E7%AE%A1%E7%90%86%EF%BC%9A%E4%BB%8E-Hugging-Face-%E5%88%B0%E8%AE%BE%E5%A4%87%E6%9C%AC%E5%9C%B0"><span class="nav-number">3.</span> <span class="nav-text">模型管理：从 Hugging Face 到设备本地</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#model-allowlists%EF%BC%9A%E5%A3%B0%E6%98%8E%E5%BC%8F%E6%A8%A1%E5%9E%8B%E6%B3%A8%E5%86%8C"><span class="nav-number">3.1.</span> <span class="nav-text">model_allowlists：声明式模型注册</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%8B%E8%BD%BD%E4%B8%8E%E5%8A%A0%E8%BD%BD%E6%B5%81%E7%A8%8B"><span class="nav-number">3.2.</span> <span class="nav-text">下载与加载流程</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Function-Calling-%E6%9E%B6%E6%9E%84%EF%BC%9A%E8%AE%A9%E6%9C%AC%E5%9C%B0%E6%A8%A1%E5%9E%8B%E8%B0%83%E7%94%A8%E7%B3%BB%E7%BB%9F%E5%8A%9F%E8%83%BD"><span class="nav-number">4.</span> <span class="nav-text">Function Calling 架构：让本地模型调用系统功能</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%B3%A8%E8%A7%A3%E9%A9%B1%E5%8A%A8%E7%9A%84%E5%B7%A5%E5%85%B7%E5%A3%B0%E6%98%8E"><span class="nav-number">4.1.</span> <span class="nav-text">注解驱动的工具声明</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#FunctionGemma-270M%EF%BC%9A%E4%B8%93%E4%B8%BA%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8%E5%BE%AE%E8%B0%83%E7%9A%84%E5%B0%8F%E6%A8%A1%E5%9E%8B"><span class="nav-number">4.2.</span> <span class="nav-text">FunctionGemma 270M：专为工具调用微调的小模型</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%A4%E6%9D%A1%E6%89%A7%E8%A1%8C%E8%B7%AF%E5%BE%84"><span class="nav-number">4.3.</span> <span class="nav-text">两条执行路径</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#MCP-%E9%9B%86%E6%88%90%EF%BC%9A%E7%AB%AF%E4%BE%A7-Agent-%E7%9A%84%E5%B7%A5%E5%85%B7%E5%8D%8F%E8%AE%AE"><span class="nav-number">5.</span> <span class="nav-text">MCP 集成：端侧 Agent 的工具协议</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%B7%B7%E5%90%88%E6%9E%B6%E6%9E%84%EF%BC%9A%E6%9C%AC%E5%9C%B0%E5%86%B3%E7%AD%96-%E8%BF%9C%E7%A8%8B%E6%89%A7%E8%A1%8C"><span class="nav-number">5.1.</span> <span class="nav-text">混合架构：本地决策 + 远程执行</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BC%9A%E8%AF%9D%E8%BF%9E%E7%BB%AD%E6%80%A7%E4%B8%8E%E5%A4%9A%E6%A8%A1%E6%80%81"><span class="nav-number">6.</span> <span class="nav-text">会话连续性与多模态</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#KV-Cache-%E5%BA%8F%E5%88%97%E5%8C%96%EF%BC%9A%E4%BC%9A%E8%AF%9D%E6%81%A2%E5%A4%8D%E7%9A%84%E7%A7%98%E5%AF%86"><span class="nav-number">6.1.</span> <span class="nav-text">KV Cache 序列化：会话恢复的秘密</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%EF%BC%9A%E6%96%87%E6%9C%AC-%E5%9B%BE%E5%83%8F-%E9%9F%B3%E9%A2%91"><span class="nav-number">6.2.</span> <span class="nav-text">多模态：文本 + 图像 + 音频</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AF%B9%E5%BC%80%E5%8F%91%E8%80%85%E7%9A%84%E5%8F%82%E8%80%83%E4%BB%B7%E5%80%BC%E4%B8%8E%E5%80%9F%E9%89%B4"><span class="nav-number">7.</span> <span class="nav-text">对开发者的参考价值与借鉴</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98"><span class="nav-number">8.</span> <span class="nav-text">常见问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#AI-Edge-Gallery-%E6%94%AF%E6%8C%81%E5%93%AA%E4%BA%9B%E8%AE%BE%E5%A4%87%E5%92%8C%E6%A8%A1%E5%9E%8B%EF%BC%9F"><span class="nav-number">8.1.</span> <span class="nav-text">AI Edge Gallery 支持哪些设备和模型？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#LiteRT-LM-%E5%92%8C-MediaPipe-LLM-Inference-API-%E6%98%AF%E4%BB%80%E4%B9%88%E5%85%B3%E7%B3%BB%EF%BC%9F"><span class="nav-number">8.2.</span> <span class="nav-text">LiteRT-LM 和 MediaPipe LLM Inference API 是什么关系？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#MCP-%E9%9B%86%E6%88%90%E9%9C%80%E8%A6%81%E8%81%94%E7%BD%91%E5%90%97%EF%BC%9F"><span class="nav-number">8.3.</span> <span class="nav-text">MCP 集成需要联网吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%99%AE%E9%80%9A-Android-%E5%BC%80%E5%8F%91%E8%80%85%E5%A6%82%E4%BD%95%E5%BC%80%E5%A7%8B%EF%BC%9F"><span class="nav-number">8.4.</span> <span class="nav-text">普通 Android 开发者如何开始？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-number">9.</span> <span class="nav-text">结论</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

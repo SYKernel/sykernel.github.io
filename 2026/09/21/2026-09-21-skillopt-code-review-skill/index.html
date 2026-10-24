@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="SkillOpt 把 SKILL.md 当作冻结 agent 的可训练参数，用 rollout、分组反思、编辑预算与验证门控做文本空间训练。本文拆解其方法与论文数据，并给出把代码评审任务接入 SkillOpt 的完整四件套代码、训练命令与部署路径。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能">
+<meta property="og:url" content="https://blog.shuying.me/2026/09/21/2026-09-21-skillopt-code-review-skill/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="SkillOpt 把 SKILL.md 当作冻结 agent 的可训练参数，用 rollout、分组反思、编辑预算与验证门控做文本空间训练。本文拆解其方法与论文数据，并给出把代码评审任务接入 SkillOpt 的完整四件套代码、训练命令与部署路径。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/skillopt-code-review-cover.png">
+<meta property="article:published_time" content="2026-09-21T12:30:00.000Z">
+<meta property="article:modified_time" content="2026-09-20T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="AI Agent">
+<meta property="article:tag" content="SkillOpt">
+<meta property="article:tag" content="SKILL.md">
+<meta property="article:tag" content="Claude Code">
+<meta property="article:tag" content="代码评审">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/skillopt-code-review-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/09/21/2026-09-21-skillopt-code-review-skill/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/09/21/2026-09-21-skillopt-code-review-skill/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-09-21 20:30:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-09-21T20:30:00+08:00">2026-09-21</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">SkillOpt 把 SKILL.md 当作冻结 agent 的可训练参数，用 rollout、分组反思、编辑预算与验证门控做文本空间训练。本文拆解其方法与论文数据，并给出把代码评审任务接入 SkillOpt 的完整四件套代码、训练命令与部署路径。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/skillopt-code-review-cover.png" itemprop="contentUrl">
+        </div>
+        <p>写 SKILL.md 的过程通常是这样：翻几个官方技能的写法，把团队经验归纳成 checklist，调几轮措辞，觉得”差不多”就发布了。这份技能到底让 agent 的评审能力变好了多少？写坏了会不会反而拖累表现？没人说得清。我在<a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">上一篇 Android Skills 实践</a>里提过，<code>android/skills</code> 仓库的 22 个官方 SKILL.md 都有明确的工作流与约束，但”怎么验证自己写的技能真的有效”这个问题，当时没有答案。</p>
+<p>Microsoft Research 今年 5 月开源的 SkillOpt 给了一个工程化的回答：把 SKILL.md 当作可训练参数，用一套复刻深度学习训练纪律的循环去优化它——有 epoch、有学习率、有验证集门控，但完全不碰模型权重。论文在 6 个基准、7 个模型、3 种执行方式组合评测的 52 个格子上全部取得最优或并列最优（直连模式 7 模型 × 6 基准共 42 格，Codex 与 Claude Code 两个 agent 环境下各评 GPT-5.5 的 5 个基准共 10 格），在 GPT-5.5 直连模式下把六基准平均分从 58.8 拉到 82.3（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2605.23904">arXiv:2605.23904</a>，2026-05-25 v2）。</p>
+<p>本文基于 2026-09-21 核验的资料：论文 <a target="_blank" rel="noopener" href="https://arxiv.org/abs/2605.23904">arXiv:2605.23904</a>（v2）、GitHub 仓库 <a target="_blank" rel="noopener" href="https://github.com/microsoft/SkillOpt">microsoft&#x2F;SkillOpt</a>（v0.2.0，2026-07-02 发布，MIT 协议）、<a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/blog/skillopt-agent-skills-as-trainable-parameters/">Microsoft Research 官方博客</a>（2026-07-24，检索于 2026-09-21）。前两节讲清方法与论文数据，后三节给出把代码评审任务接入 SkillOpt 的完整方案——论文的六个基准里没有代码评审，这一段是本文自己补上的。</p>
+<blockquote>
+<p><strong>Key Takeaways</strong></p>
+<ul>
+<li>SkillOpt 把技能文档当作冻结 agent 的可训练外部状态，训练循环复刻深度学习：rollout 对应前向传播、分组反思对应反向传播、编辑预算对应学习率、验证门控对应验证集早停，全程不改模型权重。</li>
+<li>论文在 52 个（模型 × 基准 × 环境）评测格上全部最优或并列最优，GPT-5.5 直连平均提升 +23.5 分；最终产物只有 379<del>1,995 token，由 1</del>4 条被接受的编辑构成。</li>
+<li>接入自有任务（如代码评审）需要自建四件套：数据加载器、带确定性 scorer 的 rollout、EnvAdapter、YAML 配置，参照官方示例约 200 行代码。</li>
+<li>成本集中在训练期：论文中每提升 1 分需 0.6M~46.4M token；部署期零额外调用。没有标注数据时，可从历史 fix commit 反推样本，或用 SkillOpt-Sleep 从真实会话回放（注意隐私边界）。</li>
+</ul>
+</blockquote>
+<h2 id="一、SkillOpt-是什么：把-SKILL-md-当权重训练"><a href="#一、SkillOpt-是什么：把-SKILL-md-当权重训练" class="headerlink" title="一、SkillOpt 是什么：把 SKILL.md 当权重训练"></a>一、SkillOpt 是什么：把 SKILL.md 当权重训练</h2><p>论文对现有技能来源的批评很直接：手工编写靠经验、一次性 LLM 生成无反馈修正、松散的自修订循环则”看起来在改进，实际可能越改越差”——三种方式都没有深度学习优化器那种可复现的纪律。SkillOpt 的做法是把技能文档当成<strong>冻结模型的外部可训练状态</strong>：目标模型 M 保持不动，执行环境 h 对任务 x 产生轨迹 τ 和分数 r ∈ [0,1]，优化器模型（一个单独的、通常更强的 LLM）负责改写技能文档。</p>
+<p>训练前先把数据分成 train &#x2F; selection &#x2F; test 三份（论文默认 4:1:5，<code>split_seed=42</code> 固定随机种子）：train 用来产生经验，selection 用来决定编辑是否被接受，test 只在最终报告时使用。整个循环长这样：</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 440" style="max-width:100%;height:auto;" role="img" aria-label="SkillOpt 训练循环：rollout、反思、合并、截取、应用、验证门控，以及 epoch 边界的 slow update 与 meta skill">
+  <title>SkillOpt 训练循环</title>
+  <desc>目标模型带当前技能执行一批任务（rollout），优化器对失败与成功轨迹分组反思（reflect），合并出 add/delete/replace 编辑补丁（aggregate），按编辑预算截取（select），应用到技能文档（update），最后在 selection 划分上做验证门控（gate）：分数严格变好才接受并更新 best_skill.md，被拒绝的编辑进入 rejected-edit buffer 作为负反馈。每个 epoch 边界执行 slow update 与 meta skill。</desc>
+  <!-- 六个阶段 -->
+  <rect x="26" y="64" width="120" height="68" rx="10" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"/>
+  <text x="86" y="92" font-family="sans-serif" font-size="15" fill="#38bdf8" text-anchor="middle" font-weight="bold">Rollout</text>
+  <text x="86" y="114" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">目标模型执行任务</text>
+  <rect x="166" y="64" width="120" height="68" rx="10" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"/>
+  <text x="226" y="92" font-family="sans-serif" font-size="15" fill="#22c55e" text-anchor="middle" font-weight="bold">Reflect</text>
+  <text x="226" y="114" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">失败/成功分组反思</text>
+  <rect x="306" y="64" width="120" height="68" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="366" y="92" font-family="sans-serif" font-size="15" fill="#a78bfa" text-anchor="middle" font-weight="bold">Aggregate</text>
+  <text x="366" y="114" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">合并去重补丁</text>
+  <rect x="446" y="64" width="120" height="68" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="506" y="92" font-family="sans-serif" font-size="15" fill="#a78bfa" text-anchor="middle" font-weight="bold">Select</text>
+  <text x="506" y="114" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">按编辑预算截取</text>
+  <rect x="586" y="64" width="120" height="68" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="646" y="92" font-family="sans-serif" font-size="15" fill="#a78bfa" text-anchor="middle" font-weight="bold">Update</text>
+  <text x="646" y="114" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">应用到技能文档</text>
+  <rect x="726" y="64" width="120" height="68" rx="10" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"/>
+  <text x="786" y="92" font-family="sans-serif" font-size="15" fill="#f59e0b" text-anchor="middle" font-weight="bold">Gate</text>
+  <text x="786" y="114" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">验证门控</text>
+  <!-- 主链路箭头 -->
+  <line x1="146" y1="98" x2="164" y2="98" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="164,94 172,98 164,102" fill="#6b7280"/>
+  <line x1="286" y1="98" x2="304" y2="98" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="304,94 312,98 304,102" fill="#6b7280"/>
+  <line x1="426" y1="98" x2="444" y2="98" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="444,94 452,98 444,102" fill="#6b7280"/>
+  <line x1="566" y1="98" x2="584" y2="98" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="584,94 592,98 584,102" fill="#6b7280"/>
+  <line x1="706" y1="98" x2="724" y2="98" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="724,94 732,98 724,102" fill="#6b7280"/>
+  <!-- 接受路径 -->
+  <line x1="760" y1="132" x2="760" y2="182" stroke="#22c55e" stroke-width="2"/>
+  <polygon points="756,182 760,190 764,182" fill="#22c55e"/>
+  <rect x="640" y="190" width="206" height="58" rx="10" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"/>
+  <text x="743" y="214" font-family="monospace" font-size="13" fill="#22c55e" text-anchor="middle" font-weight="bold">best_skill.md</text>
+  <text x="743" y="234" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">selection 分数严格变好才接受</text>
+  <!-- 拒绝路径 -->
+  <line x1="812" y1="132" x2="812" y2="186" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 4"/>
+  <rect x="380" y="186" width="230" height="58" rx="10" fill="#0d1f2d" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="7 4"/>
+  <text x="495" y="210" font-family="sans-serif" font-size="13" fill="#ef4444" text-anchor="middle" font-weight="bold">rejected-edit buffer</text>
+  <text x="495" y="230" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">本轮被拒编辑 → 负反馈回反思</text>
+  <polyline points="380,215 226,215 226,136" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 4"/>
+  <polygon points="222,138 226,130 230,138" fill="#ef4444"/>
+  <!-- Epoch 边界 -->
+  <rect x="26" y="290" width="808" height="62" rx="10" fill="#111827" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <text x="430" y="316" font-family="sans-serif" font-size="13.5" fill="#e5e7eb" text-anchor="middle" font-weight="bold">Epoch 边界：Slow Update ＋ Meta Skill</text>
+  <text x="430" y="338" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">每轮抽 20 题对比上轮/本轮技能，写入快编辑不可覆盖的受保护区；Meta Skill（接受/拒绝规律总结）只进优化器上下文，不随产物部署</text>
+  <!-- 底注 -->
+  <text x="26" y="392" font-family="sans-serif" font-size="11" fill="#6b7280">编辑预算 L&#8348;（文本学习率）：默认每步最多 4 条 add/delete/replace 编辑，cosine 衰减到 2；支持 constant / linear / cosine / autonomous 调度。</text>
+  <text x="26" y="414" font-family="sans-serif" font-size="11" fill="#6b7280">反思细节：失败组提补规则，成功组保行为；每组最多 3 轮精炼，层级合并时失败修正优先。</text>
+</svg>
+<figcaption>Figure 1. SkillOpt 训练循环。图片来源：根据 arXiv:2605.23904 Figure 2 与官方文档重绘。</figcaption>
+</figure>
+
+<p>几个关键机制的对应关系，官方文档给了一张直白的对照表：</p>
+<table>
+<thead>
+<tr>
+<th>深度学习</th>
+<th>SkillOpt</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>模型权重</td>
+<td>技能文档（Markdown）</td>
+</tr>
+<tr>
+<td>前向传播</td>
+<td>Rollout：目标模型执行任务</td>
+</tr>
+<tr>
+<td>损失 &#x2F; 梯度</td>
+<td>Reflect：优化器从轨迹产出编辑补丁</td>
+</tr>
+<tr>
+<td>梯度裁剪</td>
+<td>编辑选择：<code>learning_rate</code> &#x3D; 每步最多编辑条数</td>
+</tr>
+<tr>
+<td>SGD 一步</td>
+<td>补丁应用到技能文档</td>
+</tr>
+<tr>
+<td>验证集</td>
+<td>在 selection 划分上的门控评估</td>
+</tr>
+<tr>
+<td>学习率调度</td>
+<td><code>lr_scheduler</code>：cosine &#x2F; linear &#x2F; constant</td>
+</tr>
+<tr>
+<td>Epoch</td>
+<td>多轮训练 + slow update 与 meta skill</td>
+</tr>
+</tbody></table>
+<p>真正把这套循环和”让 LLM 自己改自己的 prompt”区分开的，是两个设计。<strong>验证门控</strong>：候选技能只有在 selection 划分上<strong>严格超过</strong>当前分数才会被接受——平局也算失败，部署产物永远不会悄悄变差。<strong>rejected-edit buffer</strong>：被拒的编辑不是扔掉，而是连同”它导致分数降了多少”一起记进本轮的负反馈池，后面的反思轮次会看到这些失败尝试，避免重复踩坑。论文的评价是：看似合理的文字诊断也可能伤害实际模型，门控把反思从”无条件自我编辑”变成了 propose-and-test 优化。</p>
+<h2 id="二、论文数字：提升多大，代价几何"><a href="#二、论文数字：提升多大，代价几何" class="headerlink" title="二、论文数字：提升多大，代价几何"></a>二、论文数字：提升多大，代价几何</h2><p>直接看主结果。GPT-5.5 直连模式下，六个基准从”无技能”到”SkillOpt 训练后”：</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 440" style="max-width:100%;height:auto;" role="img" aria-label="GPT-5.5 直连模式下六个基准的无技能基线与 SkillOpt 训练后分数对比柱状图">
+  <title>GPT-5.5 直连：六基准提升</title>
+  <desc>无技能基线（灰）与 SkillOpt（绿）在 SearchQA 77.7→87.3、SpreadsheetBench 41.8→80.7、OfficeQA 33.1→72.1、DocVQA 78.8→91.2、LiveMathematicianBench 37.6→66.9、ALFWorld 83.6→95.5 上的对比，六基准平均 58.8→82.3。</desc>
+  <!-- 网格与坐标 -->
+  <line x1="90" y1="350" x2="790" y2="350" stroke="#4b5563" stroke-width="1.5"/>
+  <line x1="90" y1="275" x2="790" y2="275" stroke="#374151" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="90" y1="200" x2="790" y2="200" stroke="#374151" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="90" y1="125" x2="790" y2="125" stroke="#374151" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="90" y1="50" x2="790" y2="50" stroke="#374151" stroke-width="1" stroke-dasharray="4 4"/>
+  <text x="80" y="354" font-family="monospace" font-size="11" fill="#6b7280" text-anchor="end">0</text>
+  <text x="80" y="279" font-family="monospace" font-size="11" fill="#6b7280" text-anchor="end">25</text>
+  <text x="80" y="204" font-family="monospace" font-size="11" fill="#6b7280" text-anchor="end">50</text>
+  <text x="80" y="129" font-family="monospace" font-size="11" fill="#6b7280" text-anchor="end">75</text>
+  <text x="80" y="54" font-family="monospace" font-size="11" fill="#6b7280" text-anchor="end">100</text>
+  <!-- SearchQA 77.7 / 87.3 -->
+  <rect x="106" y="116.9" width="40" height="233.1" fill="#4b5563"/>
+  <text x="126" y="110" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">77.7</text>
+  <rect x="150" y="88.1" width="40" height="261.9" fill="#22c55e"/>
+  <text x="170" y="81" font-family="monospace" font-size="10" fill="#22c55e" text-anchor="middle">87.3</text>
+  <!-- Spreadsheet 41.8 / 80.7 -->
+  <rect x="223" y="224.6" width="40" height="125.4" fill="#4b5563"/>
+  <text x="243" y="218" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">41.8</text>
+  <rect x="267" y="107.9" width="40" height="242.1" fill="#22c55e"/>
+  <text x="287" y="101" font-family="monospace" font-size="10" fill="#22c55e" text-anchor="middle">80.7</text>
+  <!-- OfficeQA 33.1 / 72.1 -->
+  <rect x="340" y="250.7" width="40" height="99.3" fill="#4b5563"/>
+  <text x="360" y="244" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">33.1</text>
+  <rect x="384" y="133.7" width="40" height="216.3" fill="#22c55e"/>
+  <text x="404" y="127" font-family="monospace" font-size="10" fill="#22c55e" text-anchor="middle">72.1</text>
+  <!-- DocVQA 78.8 / 91.2 -->
+  <rect x="456" y="113.6" width="40" height="236.4" fill="#4b5563"/>
+  <text x="476" y="107" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">78.8</text>
+  <rect x="500" y="76.4" width="40" height="273.6" fill="#22c55e"/>
+  <text x="520" y="70" font-family="monospace" font-size="10" fill="#22c55e" text-anchor="middle">91.2</text>
+  <!-- LiveMath 37.6 / 66.9 -->
+  <rect x="573" y="237.2" width="40" height="112.8" fill="#4b5563"/>
+  <text x="593" y="231" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">37.6</text>
+  <rect x="617" y="149.3" width="40" height="200.7" fill="#22c55e"/>
+  <text x="637" y="143" font-family="monospace" font-size="10" fill="#22c55e" text-anchor="middle">66.9</text>
+  <!-- ALFWorld 83.6 / 95.5 -->
+  <rect x="690" y="99.2" width="40" height="250.8" fill="#4b5563"/>
+  <text x="710" y="92" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">83.6</text>
+  <rect x="734" y="63.5" width="40" height="286.5" fill="#22c55e"/>
+  <text x="754" y="57" font-family="monospace" font-size="10" fill="#22c55e" text-anchor="middle">95.5</text>
+  <!-- X 轴标签 -->
+  <text x="148" y="372" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">SearchQA</text>
+  <text x="265" y="372" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">Spreadsheet</text>
+  <text x="382" y="372" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">OfficeQA</text>
+  <text x="498" y="372" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">DocVQA</text>
+  <text x="615" y="372" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">LiveMath</text>
+  <text x="732" y="372" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">ALFWorld</text>
+  <!-- 图例 -->
+  <rect x="620" y="8" width="14" height="14" fill="#4b5563"/>
+  <text x="640" y="19" font-family="sans-serif" font-size="11" fill="#9ca3af">无技能基线</text>
+  <rect x="712" y="8" width="14" height="14" fill="#22c55e"/>
+  <text x="732" y="19" font-family="sans-serif" font-size="11" fill="#9ca3af">SkillOpt</text>
+  <text x="90" y="408" font-family="sans-serif" font-size="11.5" fill="#22c55e" font-weight="bold">六基准平均：58.8 → 82.3（+23.5）；程序性任务提升最大（OfficeQA +39.0，SpreadsheetBench +38.9）</text>
+</svg>
+<figcaption>Figure 2. GPT-5.5 直连模式六基准对比。数据来源：arXiv:2605.23904 Table 1（held-out test split，2026-05-25 v2）。</figcaption>
+</figure>
+
+<p>把论文的结论压缩成几句话：</p>
+<ul>
+<li><strong>全面性</strong>：6 个基准（SearchQA、SpreadsheetBench、OfficeQA、DocVQA、LiveMathematicianBench、ALFWorld）、7 个目标模型（GPT-5.5 到 Qwen3.5-4B）、3 种执行模式（直连、Codex CLI、Claude Code CLI）组合出 52 个评测格——直连模式评满 7×6&#x3D;42 格，两个 agent 环境各评 GPT-5.5 的 5 个基准（ALFWorld 需要持久环境交互，不进 harness 模式）共 10 格——全部最优或并列最优；对手包括人写技能、一次性 LLM 生成、Trace2Skill、TextGrad、GEPA、EvoSkill 六类基线（Table 1）。GPT-5.5 直连下，SkillOpt 比一个”每格都挑最强基线”的 oracle 还高 +5.4 分（82.3 vs 76.9，Table 1）。</li>
+<li><strong>环境增益</strong>：GPT-5.5 在 Codex 智能体循环内平均 +24.8 分，在 Claude Code 内 +19.1 分（Table 1）。论文的 Codex&#x2F;Claude Code harness 会把当前技能渲染成每个任务的 SKILL.md 放进工作区，并回读执行轨迹摘要参与反思——和你日常把技能喂给 coding agent 的方式是同一件事。</li>
+<li><strong>小模型受益更明显</strong>：七个直连模型的平均增益为 GPT-5.5 +23.5、GPT-5.4 +12.7、GPT-5.4-mini +15.4、GPT-5.4-nano +26.7、GPT-5.2 +16.6、Qwen3.5-4B +19.2、Qwen3.6-35B-A3B +9.1（Table 1，总体均值约 +17.6）。Qwen3.5-4B 在 SpreadsheetBench 上从 9.3 提到 23.9（×2.6）——一份几百 token 的技能文档，能补上小模型权重里缺的程序性知识。</li>
+<li><strong>产物小得反直觉</strong>：六个基准的最终 best_skill.md 在 379<del>1,995 token 之间（中位约 920），且只由 1</del>4 条（中位 2.5）被门控接受的编辑构成。LiveMathematicianBench 的 +29.3 分和 OfficeQA 的 +39.0 分，各自来自<strong>一条</strong>编辑。作为对照基线的专家手写技能有 145<del>516 token，在直连模式下每一行都被 SkillOpt 击败——注意区分口径：下文成本表里 16</del>516 的初始 token 是 SkillOpt 自己的种子技能，可以短到一行。</li>
+<li><strong>消融证明机制有效</strong>（Table 2 &#x2F; Table 3）：去掉 meta skill 和 slow update，SpreadsheetBench 从 77.5 跌到 55.0（-22.5，Table 3）；去掉 rejected-edit buffer，三个消融基准分别 -1.6&#x2F;-4.6&#x2F;-2.4（Table 3）；把编辑预算从 1 扫到 16 都比”无预算自由改写”强（Table 3，无预算行为在三个消融基准上为 84.6&#x2F;75.7&#x2F;57.3；Table 2 是预算与调度的扫描）。换句话说，有界更新和门控本身就在起作用，而不是某组精调的超参。</li>
+</ul>
+<p>成本方面（Table 6，GPT-5.5 学生 + GPT-5.5 优化器）：</p>
+<table>
+<thead>
+<tr>
+<th>基准</th>
+<th>初始 token</th>
+<th>最终 token</th>
+<th>接受编辑数</th>
+<th>训练 token</th>
+<th>每提升 1 分</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>SearchQA</td>
+<td>16</td>
+<td>857</td>
+<td>4</td>
+<td>213.8M</td>
+<td>37.9M</td>
+</tr>
+<tr>
+<td>SpreadsheetBench</td>
+<td>224</td>
+<td>1,995</td>
+<td>4</td>
+<td>21.4M</td>
+<td>0.6M</td>
+</tr>
+<tr>
+<td>OfficeQA</td>
+<td>145</td>
+<td>883</td>
+<td>1</td>
+<td>20.8M</td>
+<td>1.1M</td>
+</tr>
+<tr>
+<td>DocVQA</td>
+<td>81</td>
+<td>959</td>
+<td>3</td>
+<td>188.2M</td>
+<td>46.4M</td>
+</tr>
+<tr>
+<td>LiveMathematicianBench</td>
+<td>154</td>
+<td>379</td>
+<td>1</td>
+<td>23.2M</td>
+<td>3.6M</td>
+</tr>
+<tr>
+<td>ALFWorld</td>
+<td>516</td>
+<td>1,321</td>
+<td>2</td>
+<td>59.3M</td>
+<td>15.9M</td>
+</tr>
+</tbody></table>
+<p>规律很清楚：<strong>轨迹短、任务程序性强的基准便宜</strong>（每分 0.6M~3.6M token），轨迹长或多模态的基准贵一个量级（SearchQA 37.9M&#x2F;分、DocVQA 46.4M&#x2F;分）。这些钱都花在训练期——部署后的 best_skill.md 对目标模型零额外调用。这对设计自有任务的启示放到第四节讲。</p>
+<p>另外两个值得记住的迁移实验（Table 4）：在 Codex 里训出来的 SpreadsheetBench 技能拿到 Claude Code 里跑，从 22.1 拉到 81.8（+59.7），甚至略高于 Claude Code 原生训练的 80.4——说明学到的是”先看工作簿结构再动手”这类程序性纪律，不是某个 harness 的命令配方；在 GPT-5.4 上训的技能迁移到 GPT-5.4-mini，保留了 82% 的域内增益（Table 4）。技能产物是<strong>一次训练、多处复用</strong>的。</p>
+<p>最后看看训练出来的是什么东西。论文 Figure 4 摘录了几条 verbatim 规则，比如 SpreadsheetBench 学到：”先检查工作簿结构与公式，再把求值后的静态值写入完整目标区间，而不是依赖 Excel 重算”；OfficeQA 学到：”把 oracle 解析页作为一手证据，锁定表格&#x2F;日期&#x2F;单位上下文，按要求的舍入精度输出，不带多余标签”。都是程序性纪律——不点名任何具体题目、文件或实体，更像一个老手工程师泡了一天任务后写下的经验帖，只不过它们是被优化器从失败轨迹里挖出来、再逐条过验证门的。</p>
+<h2 id="三、接入自有任务：SkillOpt-的四件套契约"><a href="#三、接入自有任务：SkillOpt-的四件套契约" class="headerlink" title="三、接入自有任务：SkillOpt 的四件套契约"></a>三、接入自有任务：SkillOpt 的四件套契约</h2><p>SkillOpt 内置的六个基准离代码评审都远，但官方扩展文档把接入自定义任务的路径写得很清楚：实现一个 benchmark 约需要四个文件（官方叫 docfaithful 的教学示例约 200 行），仓库里还有 <code>officeqa</code>、<code>swebench</code>（main 分支注册表里已有，比论文六基准更贴代码场景）等完整实现可以抄。</p>
+<p>四件套的分工：</p>
+<ol>
+<li><strong><code>SplitDataLoader</code> 子类</strong>：把 train&#x2F;val&#x2F;test 目录里的样本读成统一的 dict 列表；</li>
+<li><strong>rollout 辅助函数</strong>：让目标模型带着当前技能执行任务、打分并持久化对话——<strong>scorer 就住在这里</strong>，框架没有单独的 <code>evaluate()</code> 方法；</li>
+<li><strong><code>EnvAdapter</code> 子类</strong>：把前两者接进训练生命周期（<code>build_train_env</code> &#x2F; <code>build_eval_env</code> &#x2F; <code>rollout</code> &#x2F; <code>get_task_types</code> 四个抽象方法）；</li>
+<li><strong>YAML 配置</strong>：声明环境名、种子技能路径和训练超参。</li>
+</ol>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 470" style="max-width:100%;height:auto;" role="img" aria-label="代码评审任务接入 SkillOpt 的数据流：样本库、划分、rollout 评审、确定性打分、反思与编辑、验证门控、部署">
+  <title>代码评审任务 × SkillOpt 数据流</title>
+  <desc>代码评审样本（diff + 缺陷标注）按 4:1:5 划分；rollout 让 agent 带种子技能评审 diff 并产出 conversation.json 与 hard/soft 分数；确定性 scorer 在 rollout 内部完成打分；反思阶段消费对话与分数产出不超过编辑预算的候选编辑；验证门控只接受 selection 分数严格变好的候选，导出 best_skill.md 并部署为 SKILL.md。</desc>
+  <!-- Row 1 -->
+  <rect x="26" y="66" width="200" height="92" rx="10" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"/>
+  <text x="126" y="92" font-family="sans-serif" font-size="14" fill="#38bdf8" text-anchor="middle" font-weight="bold">样本库</text>
+  <text x="126" y="114" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">每条 = diff + 缺陷标注</text>
+  <text x="126" y="132" font-family="monospace" font-size="9.5" fill="#9ca3af" text-anchor="middle">历史 fix commit / 注入缺陷</text>
+  <text x="126" y="148" font-family="monospace" font-size="9.5" fill="#9ca3af" text-anchor="middle">建议 100+ 条起步</text>
+  <rect x="280" y="66" width="200" height="92" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="380" y="92" font-family="sans-serif" font-size="14" fill="#a78bfa" text-anchor="middle" font-weight="bold">三划分</text>
+  <text x="380" y="114" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">train : val : test = 4 : 1 : 5</text>
+  <text x="380" y="132" font-family="monospace" font-size="9.5" fill="#9ca3af" text-anchor="middle">split_seed=42</text>
+  <text x="380" y="148" font-family="monospace" font-size="9.5" fill="#9ca3af" text-anchor="middle">data/codereview_split/{train,val,test}</text>
+  <rect x="534" y="66" width="300" height="92" rx="10" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"/>
+  <text x="684" y="92" font-family="sans-serif" font-size="14" fill="#22c55e" text-anchor="middle" font-weight="bold">rollout：agent 评审 diff</text>
+  <text x="684" y="114" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">种子技能作为 system prompt，diff 作为 user</text>
+  <text x="684" y="132" font-family="monospace" font-size="9.5" fill="#9ca3af" text-anchor="middle">predictions/&lt;id&gt;/conversation.json 必须落盘</text>
+  <text x="684" y="148" font-family="monospace" font-size="9.5" fill="#9ca3af" text-anchor="middle">返回 id / hard / soft 三个必填字段</text>
+  <!-- Row 2 -->
+  <rect x="534" y="212" width="300" height="80" rx="10" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"/>
+  <text x="684" y="238" font-family="sans-serif" font-size="14" fill="#f59e0b" text-anchor="middle" font-weight="bold">确定性 scorer（在 rollout 内）</text>
+  <text x="684" y="260" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">命中 = 定位到锚点 且 类别正确</text>
+  <text x="684" y="278" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">hard = 全部真缺陷命中；soft = 召回率</text>
+  <rect x="280" y="212" width="200" height="80" rx="10" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"/>
+  <text x="380" y="238" font-family="sans-serif" font-size="14" fill="#22c55e" text-anchor="middle" font-weight="bold">反思 → 候选编辑</text>
+  <text x="380" y="260" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">失败组补规则，成功组保行为</text>
+  <text x="380" y="278" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">输出 ≤ L&#8348; 条 add/delete/replace</text>
+  <!-- Row 3 -->
+  <rect x="280" y="346" width="330" height="86" rx="10" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"/>
+  <text x="445" y="372" font-family="sans-serif" font-size="14" fill="#f59e0b" text-anchor="middle" font-weight="bold">验证门控 → best_skill.md</text>
+  <text x="445" y="394" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">val 分数严格变好才接受（平局即拒绝）</text>
+  <text x="445" y="412" font-family="monospace" font-size="9.5" fill="#9ca3af" text-anchor="middle">部署为 .claude/skills/code-review/SKILL.md</text>
+  <!-- 箭头 -->
+  <line x1="226" y1="112" x2="278" y2="112" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="278,108 286,112 278,116" fill="#6b7280"/>
+  <line x1="480" y1="112" x2="532" y2="112" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="532,108 540,112 532,116" fill="#6b7280"/>
+  <line x1="684" y1="158" x2="684" y2="210" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="680,210 684,218 688,210" fill="#6b7280"/>
+  <line x1="532" y1="252" x2="484" y2="252" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="484,248 476,252 484,256" fill="#6b7280"/>
+  <line x1="380" y1="292" x2="380" y2="344" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="376,344 380,352 384,344" fill="#6b7280"/>
+  <polyline points="280,389 150,389 150,160" fill="none" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <polygon points="146,162 150,154 154,162" fill="#ef4444"/>
+  <text x="158" y="286" font-family="sans-serif" font-size="10" fill="#ef4444">拒绝 → rejected buffer 负反馈</text>
+</svg>
+<figcaption>Figure 3. 代码评审任务接入 SkillOpt 的数据流。作者根据官方 new-benchmark 指南整理。</figcaption>
+</figure>
+
+<p>其中最难的不是代码，是<strong>数据集和 scorer 的设计</strong>。代码评审的样本就是”一段 diff + 它已知的问题清单”，三个靠谱来源：</p>
+<ul>
+<li><strong>仓库自己的 fix commit</strong>：把修复提交 diff 掉依赖部分，缺陷标注就是 commit message 和修复内容反推出来的”修复前有什么问题”。自家的历史 bug 天然贴近真实评审场景。</li>
+<li><strong>注入缺陷</strong>：在干净代码上按类别（空指针、并发、资源泄漏、生命周期泄漏）注入已知缺陷，标注完全可控。</li>
+<li><strong>公开数据集</strong>：CodeReviewer、SWE-bench 类数据的评审子集，拿来冷启动。</li>
+</ul>
+<p>规模上，论文的程序性基准用了几十到几百条训练样本，个人团队从 100~200 条起步是现实的。<strong>scorer 必须确定性、可复现</strong>——官方文档原话：”Noisy scoring kills the optimizer. Spend time on run_batch’s scoring before you spend time on prompts.”（噪声评分会杀死优化器，先把打分做扎实再琢磨提示词。）对代码评审，”命中”可以定义为：评审意见同时包含缺陷的<strong>锚点</strong>（函数名&#x2F;变量名等可定位字符串）和<strong>类别</strong>（空指针&#x2F;并发&#x2F;资源泄漏……）；hard 分数要求全部真缺陷命中，soft 分数用召回率给部分分。误报惩罚（评审意见里的假缺陷扣分）可以加进 soft，但第一版建议保持简单，先让循环跑通。</p>
+<h2 id="四、三步搭起来：codereview-环境完整代码"><a href="#四、三步搭起来：codereview-环境完整代码" class="headerlink" title="四、三步搭起来：codereview 环境完整代码"></a>四、三步搭起来：codereview 环境完整代码</h2><h3 id="第-1-步：安装与目录"><a href="#第-1-步：安装与目录" class="headerlink" title="第 1 步：安装与目录"></a>第 1 步：安装与目录</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> https://github.com/microsoft/SkillOpt.git</span><br><span class="line"><span class="built_in">cd</span> SkillOpt</span><br><span class="line">python -m pip install -e <span class="string">&quot;.[searchqa]&quot;</span>     <span class="comment"># 研究引擎按 checkout 安装</span></span><br><span class="line"><span class="built_in">cp</span> .env.example .<span class="built_in">env</span>                        <span class="comment"># 配 AZURE_OPENAI_ENDPOINT 或 OPENAI_API_KEY / Anthropic 等</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">mkdir</span> -p skillopt/envs/codereview/skills</span><br><span class="line"><span class="built_in">mkdir</span> -p data/codereview_split/&#123;train,val,<span class="built_in">test</span>&#125;</span><br></pre></td></tr></table></figure>
+
+<p>后端配置注意一点：<code>claude_chat</code> 后端实际是拉起 <code>claude -p</code> 命令行，不是直连 Anthropic API；如果你的 provider 兼容 OpenAI Chat 协议，优先用内置的 <code>openai_compatible</code> 后端，不用写任何集成代码。</p>
+<h3 id="第-2-步：数据加载器与-rollout（scorer-在这里）"><a href="#第-2-步：数据加载器与-rollout（scorer-在这里）" class="headerlink" title="第 2 步：数据加载器与 rollout（scorer 在这里）"></a>第 2 步：数据加载器与 rollout（scorer 在这里）</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># skillopt/envs/codereview/dataloader.py</span></span><br><span class="line"><span class="keyword">from</span> __future__ <span class="keyword">import</span> annotations</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> json</span><br><span class="line"><span class="keyword">from</span> pathlib <span class="keyword">import</span> Path</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> skillopt.datasets.base <span class="keyword">import</span> SplitDataLoader</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_normalize</span>(<span class="params">raw: <span class="built_in">dict</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;每个样本 = 一段 diff + 已知缺陷清单（ground truth）。&quot;&quot;&quot;</span></span><br><span class="line">    <span class="keyword">return</span> &#123;</span><br><span class="line">        <span class="string">&quot;id&quot;</span>: <span class="built_in">str</span>(raw[<span class="string">&quot;uid&quot;</span>]),</span><br><span class="line">        <span class="string">&quot;diff&quot;</span>: raw[<span class="string">&quot;diff&quot;</span>],</span><br><span class="line">        <span class="string">&quot;defects&quot;</span>: raw[<span class="string">&quot;defects&quot;</span>],   <span class="comment"># [&#123;&quot;anchor&quot;: &quot;onResume&quot;, &quot;type&quot;: &quot;内存泄漏&quot;, &quot;desc&quot;: &quot;...&quot;&#125;]</span></span><br><span class="line">        <span class="string">&quot;task_type&quot;</span>: raw.get(<span class="string">&quot;category&quot;</span>, <span class="string">&quot;codereview&quot;</span>),</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">CodeReviewDataLoader</span>(<span class="title class_ inherited__">SplitDataLoader</span>):</span><br><span class="line">    <span class="string">&quot;&quot;&quot;从 split 目录的 JSON 文件加载代码评审样本。&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">load_split_items</span>(<span class="params">self, split_path: <span class="built_in">str</span></span>) -&gt; <span class="built_in">list</span>[<span class="built_in">dict</span>]:</span><br><span class="line">        json_files = <span class="built_in">sorted</span>(Path(split_path).glob(<span class="string">&quot;*.json&quot;</span>))</span><br><span class="line">        <span class="keyword">if</span> <span class="keyword">not</span> json_files:</span><br><span class="line">            <span class="keyword">raise</span> FileNotFoundError(<span class="string">f&quot;No .json file found in <span class="subst">&#123;split_path&#125;</span>&quot;</span>)</span><br><span class="line">        items: <span class="built_in">list</span>[<span class="built_in">dict</span>] = []</span><br><span class="line">        <span class="keyword">for</span> path <span class="keyword">in</span> json_files:</span><br><span class="line">            <span class="keyword">with</span> path.<span class="built_in">open</span>(encoding=<span class="string">&quot;utf-8&quot;</span>) <span class="keyword">as</span> f:</span><br><span class="line">                items.extend(_normalize(item) <span class="keyword">for</span> item <span class="keyword">in</span> json.load(f))</span><br><span class="line">        <span class="keyword">return</span> items</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># skillopt/envs/codereview/rollout.py</span></span><br><span class="line"><span class="keyword">from</span> __future__ <span class="keyword">import</span> annotations</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> json</span><br><span class="line"><span class="keyword">import</span> os</span><br><span class="line"><span class="keyword">from</span> pathlib <span class="keyword">import</span> Path</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> skillopt.model <span class="keyword">import</span> chat_target</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_hit</span>(<span class="params">review_text: <span class="built_in">str</span>, defect: <span class="built_in">dict</span></span>) -&gt; <span class="built_in">bool</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;命中 = 同时定位到锚点（函数/变量名）并给出正确的缺陷类别。&quot;&quot;&quot;</span></span><br><span class="line">    text = (review_text <span class="keyword">or</span> <span class="string">&quot;&quot;</span>).lower()</span><br><span class="line">    <span class="keyword">return</span> defect[<span class="string">&quot;anchor&quot;</span>].lower() <span class="keyword">in</span> text <span class="keyword">and</span> defect[<span class="string">&quot;type&quot;</span>].lower() <span class="keyword">in</span> text</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_score</span>(<span class="params">review_text: <span class="built_in">str</span>, defects: <span class="built_in">list</span>[<span class="built_in">dict</span>]</span>) -&gt; <span class="built_in">tuple</span>[<span class="built_in">int</span>, <span class="built_in">float</span>]:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;hard：全部真缺陷被命中才记 1；soft：召回率作部分分。</span></span><br><span class="line"><span class="string">    这是整条链路最重要的函数——噪声评分会杀死优化器。&quot;&quot;&quot;</span></span><br><span class="line">    total = <span class="built_in">max</span>(<span class="built_in">len</span>(defects), <span class="number">1</span>)</span><br><span class="line">    hits = <span class="built_in">sum</span>(_hit(review_text, d) <span class="keyword">for</span> d <span class="keyword">in</span> defects)</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">int</span>(hits == <span class="built_in">len</span>(defects)), hits / total</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_rollout_one</span>(<span class="params">item: <span class="built_in">dict</span>, skill_content: <span class="built_in">str</span>, *, prediction_dir: Path,</span></span><br><span class="line"><span class="params">                 max_completion_tokens: <span class="built_in">int</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">    system = skill_content</span><br><span class="line">    user = (</span><br><span class="line">        <span class="string">&quot;请评审以下代码变更，逐条指出缺陷，每条包含位置、类别与修复建议：\n\n&quot;</span></span><br><span class="line">        <span class="string">f&quot;<span class="subst">&#123;item[<span class="string">&#x27;diff&#x27;</span>]&#125;</span>\n\n评审意见：&quot;</span></span><br><span class="line">    )</span><br><span class="line">    prediction, _usage = chat_target(</span><br><span class="line">        system=system, user=user,</span><br><span class="line">        max_completion_tokens=max_completion_tokens,</span><br><span class="line">    )</span><br><span class="line">    hard, soft = _score(prediction, item.get(<span class="string">&quot;defects&quot;</span>, []))</span><br><span class="line"></span><br><span class="line">    task_dir = prediction_dir / <span class="built_in">str</span>(item[<span class="string">&quot;id&quot;</span>])</span><br><span class="line">    task_dir.mkdir(parents=<span class="literal">True</span>, exist_ok=<span class="literal">True</span>)</span><br><span class="line">    conversation = [</span><br><span class="line">        &#123;<span class="string">&quot;role&quot;</span>: <span class="string">&quot;system&quot;</span>, <span class="string">&quot;content&quot;</span>: system&#125;,</span><br><span class="line">        &#123;<span class="string">&quot;role&quot;</span>: <span class="string">&quot;user&quot;</span>, <span class="string">&quot;content&quot;</span>: user&#125;,</span><br><span class="line">        &#123;<span class="string">&quot;role&quot;</span>: <span class="string">&quot;assistant&quot;</span>, <span class="string">&quot;content&quot;</span>: prediction&#125;,</span><br><span class="line">    ]</span><br><span class="line">    (task_dir / <span class="string">&quot;conversation.json&quot;</span>).write_text(</span><br><span class="line">        json.dumps(conversation, ensure_ascii=<span class="literal">False</span>, indent=<span class="number">2</span>),</span><br><span class="line">        encoding=<span class="string">&quot;utf-8&quot;</span>,</span><br><span class="line">    )</span><br><span class="line">    <span class="keyword">return</span> &#123;</span><br><span class="line">        <span class="string">&quot;id&quot;</span>: <span class="built_in">str</span>(item[<span class="string">&quot;id&quot;</span>]),</span><br><span class="line">        <span class="string">&quot;hard&quot;</span>: hard,</span><br><span class="line">        <span class="string">&quot;soft&quot;</span>: soft,</span><br><span class="line">        <span class="string">&quot;predicted_answer&quot;</span>: prediction,</span><br><span class="line">        <span class="string">&quot;diff&quot;</span>: item.get(<span class="string">&quot;diff&quot;</span>, <span class="string">&quot;&quot;</span>),</span><br><span class="line">        <span class="string">&quot;defects&quot;</span>: item.get(<span class="string">&quot;defects&quot;</span>, []),</span><br><span class="line">        <span class="string">&quot;task_type&quot;</span>: item.get(<span class="string">&quot;task_type&quot;</span>, <span class="string">&quot;codereview&quot;</span>),</span><br><span class="line">        <span class="string">&quot;target_system_prompt&quot;</span>: system,</span><br><span class="line">        <span class="string">&quot;target_user_prompt&quot;</span>: user,</span><br><span class="line">        <span class="string">&quot;n_turns&quot;</span>: <span class="number">1</span>,</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">run_batch</span>(<span class="params">*, items: <span class="built_in">list</span>[<span class="built_in">dict</span>], skill_content: <span class="built_in">str</span>, out_root: <span class="built_in">str</span>,</span></span><br><span class="line"><span class="params">              workers: <span class="built_in">int</span> = <span class="number">4</span>, max_completion_tokens: <span class="built_in">int</span> = <span class="number">4096</span></span>) -&gt; <span class="built_in">list</span>[<span class="built_in">dict</span>]:</span><br><span class="line">    os.makedirs(out_root, exist_ok=<span class="literal">True</span>)</span><br><span class="line">    prediction_dir = Path(out_root, <span class="string">&quot;predictions&quot;</span>)</span><br><span class="line">    results = [</span><br><span class="line">        _rollout_one(item, skill_content, prediction_dir=prediction_dir,</span><br><span class="line">                     max_completion_tokens=max_completion_tokens)</span><br><span class="line">        <span class="keyword">for</span> item <span class="keyword">in</span> items</span><br><span class="line">    ]</span><br><span class="line">    Path(out_root, <span class="string">&quot;rollouts.json&quot;</span>).write_text(</span><br><span class="line">        json.dumps(results, ensure_ascii=<span class="literal">False</span>, indent=<span class="number">2</span>), encoding=<span class="string">&quot;utf-8&quot;</span>)</span><br><span class="line">    <span class="keyword">return</span> results</span><br></pre></td></tr></table></figure>
+
+<p>两个官方强调过的坑写进代码注释了：<strong>conversation.json 必须持久化</strong>（共享反思阶段按 <code>predictions/&lt;id&gt;/conversation.json</code> 读取，缺了就跳过该样本——训练反复报 <code>skip_no_patches</code> 十有八九是它）；<strong>走 <code>chat_target</code> 而不是裸调 API</strong>，这样后端切换对适配器透明。</p>
+<h3 id="第-3-步：Adapter、注册与配置"><a href="#第-3-步：Adapter、注册与配置" class="headerlink" title="第 3 步：Adapter、注册与配置"></a>第 3 步：Adapter、注册与配置</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># skillopt/envs/codereview/adapter.py</span></span><br><span class="line"><span class="keyword">from</span> __future__ <span class="keyword">import</span> annotations</span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> skillopt.datasets.base <span class="keyword">import</span> BatchSpec</span><br><span class="line"><span class="keyword">from</span> skillopt.envs.base <span class="keyword">import</span> EnvAdapter</span><br><span class="line"><span class="keyword">from</span> skillopt.envs.codereview.dataloader <span class="keyword">import</span> CodeReviewDataLoader</span><br><span class="line"><span class="keyword">from</span> skillopt.envs.codereview.rollout <span class="keyword">import</span> run_batch</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">CodeReviewAdapter</span>(<span class="title class_ inherited__">EnvAdapter</span>):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, split_dir: <span class="built_in">str</span> = <span class="string">&quot;&quot;</span>, data_path: <span class="built_in">str</span> = <span class="string">&quot;&quot;</span>,</span></span><br><span class="line"><span class="params">                 split_mode: <span class="built_in">str</span> = <span class="string">&quot;split_dir&quot;</span>, split_ratio: <span class="built_in">str</span> = <span class="string">&quot;4:1:5&quot;</span>,</span></span><br><span class="line"><span class="params">                 split_seed: <span class="built_in">int</span> = <span class="number">42</span>, split_output_dir: <span class="built_in">str</span> = <span class="string">&quot;&quot;</span>,</span></span><br><span class="line"><span class="params">                 workers: <span class="built_in">int</span> = <span class="number">4</span>, analyst_workers: <span class="built_in">int</span> = <span class="number">4</span>,</span></span><br><span class="line"><span class="params">                 failure_only: <span class="built_in">bool</span> = <span class="literal">False</span>, minibatch_size: <span class="built_in">int</span> = <span class="number">8</span>,</span></span><br><span class="line"><span class="params">                 edit_budget: <span class="built_in">int</span> = <span class="number">4</span>, seed: <span class="built_in">int</span> = <span class="number">42</span>, limit: <span class="built_in">int</span> = <span class="number">0</span>,</span></span><br><span class="line"><span class="params">                 max_completion_tokens: <span class="built_in">int</span> = <span class="number">4096</span></span>) -&gt; <span class="literal">None</span>:</span><br><span class="line">        self.workers = workers</span><br><span class="line">        self.max_completion_tokens = <span class="built_in">int</span>(max_completion_tokens)</span><br><span class="line">        self.dataloader = CodeReviewDataLoader(</span><br><span class="line">            split_dir=split_dir, data_path=data_path, split_mode=split_mode,</span><br><span class="line">            split_ratio=split_ratio, split_seed=split_seed,</span><br><span class="line">            split_output_dir=split_output_dir, seed=seed, limit=limit,</span><br><span class="line">        )</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">setup</span>(<span class="params">self, cfg: <span class="built_in">dict</span></span>) -&gt; <span class="literal">None</span>:</span><br><span class="line">        <span class="built_in">super</span>().setup(cfg)</span><br><span class="line">        self.dataloader.setup(cfg)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_dataloader</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="keyword">return</span> self.dataloader</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">build_env_from_batch</span>(<span class="params">self, batch: BatchSpec, **kwargs</span>):</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">list</span>(batch.payload <span class="keyword">or</span> [])</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">build_train_env</span>(<span class="params">self, batch_size: <span class="built_in">int</span>, seed: <span class="built_in">int</span>, **kwargs</span>):</span><br><span class="line">        batch = self.dataloader.build_train_batch(</span><br><span class="line">            batch_size=batch_size, seed=seed, **kwargs)</span><br><span class="line">        <span class="keyword">return</span> self.build_env_from_batch(batch, **kwargs)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">build_eval_env</span>(<span class="params">self, env_num: <span class="built_in">int</span>, split: <span class="built_in">str</span>, seed: <span class="built_in">int</span>, **kwargs</span>):</span><br><span class="line">        batch = self.dataloader.build_eval_batch(</span><br><span class="line">            env_num=env_num, split=split, seed=seed, **kwargs)</span><br><span class="line">        <span class="keyword">return</span> self.build_env_from_batch(batch, **kwargs)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">rollout</span>(<span class="params">self, env_manager, skill_content: <span class="built_in">str</span>, out_dir: <span class="built_in">str</span>,</span></span><br><span class="line"><span class="params">                **kwargs</span>) -&gt; <span class="built_in">list</span>[<span class="built_in">dict</span>]:</span><br><span class="line">        <span class="keyword">return</span> run_batch(items=<span class="built_in">list</span>(env_manager), skill_content=skill_content,</span><br><span class="line">                         out_root=out_dir, workers=self.workers,</span><br><span class="line">                         max_completion_tokens=self.max_completion_tokens)</span><br><span class="line"></span><br><span class="line">    <span class="comment"># reflect() 继承自 EnvAdapter，用官方默认的分组反思即可</span></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_task_types</span>(<span class="params">self</span>) -&gt; <span class="built_in">list</span>[<span class="built_in">str</span>]:</span><br><span class="line">        <span class="keyword">return</span> [<span class="string">&quot;codereview&quot;</span>]</span><br></pre></td></tr></table></figure>
+
+<p>在 <code>scripts/train.py</code> 的 <code>_register_builtins()</code> 里加四行（<code>scripts/eval_only.py</code> 同样处理），否则会报 <code>ValueError: Unknown environment &#39;codereview&#39;</code>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    <span class="keyword">from</span> skillopt.envs.codereview.adapter <span class="keyword">import</span> CodeReviewAdapter</span><br><span class="line">    _ENV_REGISTRY[<span class="string">&quot;codereview&quot;</span>] = CodeReviewAdapter</span><br><span class="line"><span class="keyword">except</span> ImportError:</span><br><span class="line">    <span class="keyword">pass</span></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># configs/codereview/default.yaml</span></span><br><span class="line"><span class="attr">_base_:</span> <span class="string">../_base_/default.yaml</span>      <span class="comment"># 注意：是字符串，不是列表</span></span><br><span class="line"></span><br><span class="line"><span class="attr">model:</span></span><br><span class="line">  <span class="attr">reasoning_effort:</span> <span class="string">medium</span></span><br><span class="line"></span><br><span class="line"><span class="attr">train:</span></span><br><span class="line">  <span class="attr">batch_size:</span> <span class="number">16</span></span><br><span class="line">  <span class="attr">accumulation:</span> <span class="number">1</span></span><br><span class="line">  <span class="attr">num_epochs:</span> <span class="number">4</span></span><br><span class="line"></span><br><span class="line"><span class="attr">gradient:</span></span><br><span class="line">  <span class="attr">minibatch_size:</span> <span class="number">8</span></span><br><span class="line">  <span class="attr">merge_batch_size:</span> <span class="number">8</span></span><br><span class="line"></span><br><span class="line"><span class="attr">optimizer:</span></span><br><span class="line">  <span class="attr">learning_rate:</span> <span class="number">4</span></span><br><span class="line"></span><br><span class="line"><span class="attr">env:</span></span><br><span class="line">  <span class="attr">name:</span> <span class="string">codereview</span></span><br><span class="line">  <span class="attr">skill_init:</span> <span class="string">skillopt/envs/codereview/skills/initial.md</span>   <span class="comment"># 手写种子技能</span></span><br><span class="line">  <span class="attr">split_mode:</span> <span class="string">split_dir</span></span><br><span class="line">  <span class="attr">split_dir:</span> <span class="string">data/codereview_split</span></span><br><span class="line">  <span class="attr">workers:</span> <span class="number">4</span></span><br><span class="line">  <span class="attr">max_completion_tokens:</span> <span class="number">4096</span></span><br><span class="line">  <span class="attr">limit:</span> <span class="number">0</span></span><br></pre></td></tr></table></figure>
+
+<p>种子技能就是你现在手写的那份 SKILL.md 正文，比如：</p>
+<figure class="highlight markdown"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="section"># 代码评审技能（手写种子版）</span></span><br><span class="line"></span><br><span class="line">你是一名严格的代码评审员。对给定 diff：</span><br><span class="line"></span><br><span class="line"><span class="bullet">1.</span> 先理解整体变更意图，再逐文件检查。</span><br><span class="line"><span class="bullet">2.</span> 重点：生命周期泄漏（Receiver/Listener/Handler 未注销）、主线程 IO、</span><br><span class="line">   并发可见性、空指针边界、资源未关闭。</span><br><span class="line"><span class="bullet">3.</span> 每条意见必须包含位置（函数/变量名）、缺陷类别、修复建议。</span><br><span class="line"><span class="bullet">4.</span> 不确定的不要报——误报比漏报更浪费人时。</span><br></pre></td></tr></table></figure>
+
+<p>训练与评估：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 调试期先小步快跑：batch_size=4、只取 10 条样本</span></span><br><span class="line">python scripts/train.py --config configs/codereview/default.yaml \</span><br><span class="line">  --out_root outputs/codereview_v1 \</span><br><span class="line">  --cfg-options train.batch_size=4 env.limit=10</span><br><span class="line"></span><br><span class="line"><span class="comment"># 正式训练</span></span><br><span class="line">python scripts/train.py --config configs/codereview/default.yaml \</span><br><span class="line">  --out_root outputs/codereview_v1</span><br><span class="line"></span><br><span class="line"><span class="comment"># 评估训练产物（valid_unseen 即 held-out test 划分）</span></span><br><span class="line">python scripts/eval_only.py --config configs/codereview/default.yaml \</span><br><span class="line">  --skill outputs/codereview_v1/best_skill.md --<span class="built_in">split</span> valid_unseen</span><br></pre></td></tr></table></figure>
+
+<p>跑起来之后，输出目录的每个文件都有用途：<code>best_skill.md</code> 是部署产物；<code>history.json</code> 记录每一步的门控决策；<code>skills/skill_vXXXX.md</code> 是技能快照；<code>steps/step_XXXX/</code> 里有 <code>edit_apply_report.json</code>，每条编辑的接受&#x2F;跳过状态都在，事后可审计；<code>runtime_state.json</code> 支持断点续跑（重跑同一命令会从上次中断的 step 继续）。想看训练曲线可以起 WebUI：<code>python -m skillopt_webui.app</code>（Gradio，默认 7860 端口）。</p>
+<p>成本预估：按论文的成本表倒推，代码评审 rollout 是单轮短轨迹（类似 OfficeQA 的 1.1M token&#x2F;分），100 条样本 × 4 epoch × 每步一次 val 评估，整体量级在千万级 token 以内，训练期费用可控。超出预算时优先砍 epoch 数和 rollout batch，别砍 scorer 质量。</p>
+<h2 id="五、拿到-best-skill-md-之后"><a href="#五、拿到-best-skill-md-之后" class="headerlink" title="五、拿到 best_skill.md 之后"></a>五、拿到 best_skill.md 之后</h2><p><strong>先读产物再部署。</strong> 打开 <code>history.json</code> 和 <code>edit_apply_report.json</code>，看优化器提了哪些编辑、被门控拒了哪些、为什么。论文的经验是大量提案会被拒（六个基准最终只接受 1~4 条），被拒的提案恰恰是”听起来合理但实际伤分”的改动——这份负反馈清单本身就是免费的质量工程材料，值得抄进团队评审规范。</p>
+<p><strong>部署就是包一层 frontmatter。</strong> 把 best_skill.md 正文放进项目的 <code>.claude/skills/code-review/SKILL.md</code>：</p>
+<figure class="highlight markdown"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">---</span><br><span class="line">name: code-review</span><br><span class="line"><span class="section">description: 严格评审代码变更，按位置+类别+修复建议输出意见。当用户请求 review 代码或 diff 时使用。</span></span><br><span class="line"><span class="section">---</span></span><br><span class="line"></span><br><span class="line">（best<span class="emphasis">_skill.md 的正文原样粘贴在这里）</span></span><br></pre></td></tr></table></figure>
+
+<p>这与论文里 Claude Code harness 的用法一致——它就是把当前技能渲染成 SKILL.md 放进任务工作区。上次说过的 harness 选择问题（<a href="https://blog.shuying.me/2026/08/25/codex-vs-deepseek-harness/">Codex 与 DeepSeek harness 对比</a>）在这里同样成立，而且论文给了底气：同一份 best_skill.md 在 Codex 和 Claude Code 之间迁移是正收益的（SpreadsheetBench 跨 harness 迁移 +59.7&#x2F;+43.6），你的技能资产不用绑定单一工具链。</p>
+<p><strong>让训练变成日常而非一次性项目。</strong> v0.2.0 新增的 SkillOpt-Sleep 把这套纪律搬到了部署侧：夜间”睡眠循环”读取你本地 Claude Code &#x2F; Codex &#x2F; Copilot &#x2F; Cursor 的历史会话，挖掘反复出现的任务，用你自己的 API 预算回放，然后反思、有界编辑、过 held-out 验证门控，产出<strong>待你人工采纳</strong>的技能&#x2F;记忆更新提案（harvest → mine → replay → consolidate → stage）。这基本就是”从真实使用中自动训练技能”的完整闭环，对个人开发者是最省力的入口。两点提醒：它是 preview 状态，接口会变；数据边界要清楚——真实后端会把会话摘录发给所选 provider，敏感项目先走”harvest 落盘 → 人工审查脱敏 → 标记 <code>&quot;reviewed&quot;: true</code> 再回放”的流程。</p>
+<h2 id="六、工程判断：什么时候值得训"><a href="#六、工程判断：什么时候值得训" class="headerlink" title="六、工程判断：什么时候值得训"></a>六、工程判断：什么时候值得训</h2><p>不是所有技能都值得进训练循环。三个条件都满足再动手：</p>
+<ol>
+<li><strong>有确定性 scorer</strong>。代码评审有”缺陷是否被指出”这样的硬信号；纯主观的文风类技能没有，硬训只会把噪声当梯度。</li>
+<li><strong>失败模式是程序性的</strong>。论文里提升最大的基准（SpreadsheetBench +38.9、OfficeQA +39.0）共性是：模型缺的是”先看结构再写值””按格式输出”这类纪律。如果你的 agent 评审老是漏掉并发问题、格式总是不符合团队规范，这是可训练的；如果问题是”业务理解不到位”，技能文档解决不了。</li>
+<li><strong>样本够、轨迹短</strong>。百条量级样本、单轮或浅多轮任务成本可控；长轨迹任务（论文里 SearchQA 每分 37.9M token）先把轨迹砍短再训。</li>
+</ol>
+<p>反过来说，手写不是被淘汰，而是换了角色：手写版做<strong>种子</strong>（<code>skill_init</code>），训练循环在它基础上做有界增强，验证门控保证不回退——最差情况也只是回到你的手写版。论文对 learned rules 的定性观察（程序性、非实例化、像老手写的经验帖）说明这门”训练”补的正是手写最难补的那部分：从大量真实失败里归纳、且经过数据验证的纪律。</p>
+<p>对团队，我的建议是三步走：先用 SkillOpt-Sleep 对现有会话做一次免费诊断（mock 后端不花钱，还能看到它想提什么编辑）；再从 fix commit 攒 100 条代码评审样本跑一个小规模训练（batch_size&#x3D;4 起步）；最后把 best_skill.md 进 code review，拿一个季度的真实评审数据回填样本库，进入下一轮训练。这套”基线—回归—回填”的循环，和<a href="https://blog.shuying.me/2026/09/05/ai-unit-test-pyramid/">《AI 生成的单元测试：70&#x2F;20&#x2F;10 测试金字塔怎么落地》</a>里对测试套件的做法是同一个思路：先有可测量的基线，再谈优化。技能从此从”文档”变成”有版本、有回归验证、可回滚的工程资产”。</p>
+<h2 id="FAQ"><a href="#FAQ" class="headerlink" title="FAQ"></a>FAQ</h2><h3 id="SkillOpt-会修改模型权重吗？"><a href="#SkillOpt-会修改模型权重吗？" class="headerlink" title="SkillOpt 会修改模型权重吗？"></a>SkillOpt 会修改模型权重吗？</h3><p>不会。目标模型全程冻结，优化只发生在技能文档上。部署产物是一个几百到两千 token 的 Markdown 文件，推理时零额外模型调用——这也是它区别于微调（LoRA&#x2F;全参）的根本点：不占 GPU 训练资源，产物可读、可审计、可跨模型复用。</p>
+<h3 id="它和-TextGrad、GEPA、DSPy-这类提示词优化有什么区别？"><a href="#它和-TextGrad、GEPA、DSPy-这类提示词优化有什么区别？" class="headerlink" title="它和 TextGrad、GEPA、DSPy 这类提示词优化有什么区别？"></a>它和 TextGrad、GEPA、DSPy 这类提示词优化有什么区别？</h3><p>论文的实验设计刻意做了隔离：目标模型、执行环境、评分器全部固定，只换适配方法。TextGrad&#x2F;GEPA 优化的是”某次调用的 prompt”，没有持久的技能产物，也没有 held-out 门控——它们在论文里是被 SkillOpt 全面超过的基线。DSPy 走声明式管线编译路线，解决的问题不同。一句话：SkillOpt 优化的是<strong>可部署、可迁移的技能文件</strong>，并把深度学习的训练纪律（编辑预算、验证门控、负反馈、slow update）带进了文本空间。</p>
+<h3 id="没有标注好的缺陷清单，还能训代码评审技能吗？"><a href="#没有标注好的缺陷清单，还能训代码评审技能吗？" class="headerlink" title="没有标注好的缺陷清单，还能训代码评审技能吗？"></a>没有标注好的缺陷清单，还能训代码评审技能吗？</h3><p>能，但必须有可验证信号，否则退化为噪声优化。三条路：从仓库历史 fix commit 自动反推标注（修复 diff 就是答案）；按类别注入缺陷自造标注；或用 SkillOpt-Sleep 从真实会话回放并人工审核任务集。核心原则不变——scorer 要确定性，哪怕粗（命中&#x2F;未命中二值）也比模糊的”评审质量打分”有效。</p>
+<h3 id="优化器用多大的模型？训练贵不贵？"><a href="#优化器用多大的模型？训练贵不贵？" class="headerlink" title="优化器用多大的模型？训练贵不贵？"></a>优化器用多大的模型？训练贵不贵？</h3><p>优化器只在训练期运行，不进部署，所以”有更强的就用更强的”——论文 Table 5 显示强优化器在所有测试格上增益更大，目标模型自任优化器只能恢复 56%<del>74% 的增益。成本参考 Table 6：短轨迹程序性任务每提升 1 分约 0.6M</del>3.6M token，长轨迹或多模态任务 15M~46M token。个人场景把 rollout batch 和 epoch 压小（batch_size&#x3D;4、epochs&#x3D;2），总开销可以压到百万 token 量级。</p>
+<h2 id="结语"><a href="#结语" class="headerlink" title="结语"></a>结语</h2><p>SkillOpt 把一个一直靠手感的事情变成了工程问题：技能文档 &#x3D; 可训练参数，训练 &#x3D; 有门控的文本空间优化，产物 &#x3D; 小到可以通读的 Markdown。对每天在给 agent 写 SKILL.md 的工程师，值得动手的顺序是：选一个有硬信号的任务（代码评审就很合适）→ 攒 100 条样本 → 按 docfaithful 的四件套契约写 200 行适配代码 → 用 <code>batch_size=4</code> 跑第一次训练。当你第一次看到 <code>history.json</code> 里”提案被拒、分数不回退”的记录时，你会意识到技能维护这件事已经有了回归测试。</p>
+<p>项目地址：<a target="_blank" rel="noopener" href="https://github.com/microsoft/SkillOpt">microsoft&#x2F;SkillOpt</a>（MIT，PyPI 包名 <code>skillopt</code>），论文：<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2605.23904">arXiv:2605.23904</a>，官方博客：<a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/blog/skillopt-agent-skills-as-trainable-parameters/">SkillOpt: Agent skills as trainable parameters</a>。关于 SKILL.md 本身的写法约定，见<a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">上一篇：Android CLI 与 Android Skills 最佳实践</a>。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/09/21/2026-09-21-skillopt-code-review-skill/" title="从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能">https://blog.shuying.me/2026/09/21/2026-09-21-skillopt-code-review-skill/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/AI-Agent/" rel="tag"># AI Agent</a>
+              <a href="/tags/SkillOpt/" rel="tag"># SkillOpt</a>
+              <a href="/tags/SKILL-md/" rel="tag"># SKILL.md</a>
+              <a href="/tags/Claude-Code/" rel="tag"># Claude Code</a>
+              <a href="/tags/%E4%BB%A3%E7%A0%81%E8%AF%84%E5%AE%A1/" rel="tag"># 代码评审</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/09/05/2026-09-05-ai-unit-test-pyramid/" rel="prev" title="AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地">
+      <i class="fa fa-chevron-left"></i> AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/09/22/2026-09-22-deep-learning-for-kids/" rel="next" title="深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程">
+      深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E3%80%81SkillOpt-%E6%98%AF%E4%BB%80%E4%B9%88%EF%BC%9A%E6%8A%8A-SKILL-md-%E5%BD%93%E6%9D%83%E9%87%8D%E8%AE%AD%E7%BB%83"><span class="nav-number">1.</span> <span class="nav-text">一、SkillOpt 是什么：把 SKILL.md 当权重训练</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%8C%E3%80%81%E8%AE%BA%E6%96%87%E6%95%B0%E5%AD%97%EF%BC%9A%E6%8F%90%E5%8D%87%E5%A4%9A%E5%A4%A7%EF%BC%8C%E4%BB%A3%E4%BB%B7%E5%87%A0%E4%BD%95"><span class="nav-number">2.</span> <span class="nav-text">二、论文数字：提升多大，代价几何</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%89%E3%80%81%E6%8E%A5%E5%85%A5%E8%87%AA%E6%9C%89%E4%BB%BB%E5%8A%A1%EF%BC%9ASkillOpt-%E7%9A%84%E5%9B%9B%E4%BB%B6%E5%A5%97%E5%A5%91%E7%BA%A6"><span class="nav-number">3.</span> <span class="nav-text">三、接入自有任务：SkillOpt 的四件套契约</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9B%E3%80%81%E4%B8%89%E6%AD%A5%E6%90%AD%E8%B5%B7%E6%9D%A5%EF%BC%9Acodereview-%E7%8E%AF%E5%A2%83%E5%AE%8C%E6%95%B4%E4%BB%A3%E7%A0%81"><span class="nav-number">4.</span> <span class="nav-text">四、三步搭起来：codereview 环境完整代码</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%AC%AC-1-%E6%AD%A5%EF%BC%9A%E5%AE%89%E8%A3%85%E4%B8%8E%E7%9B%AE%E5%BD%95"><span class="nav-number">4.1.</span> <span class="nav-text">第 1 步：安装与目录</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%AC%AC-2-%E6%AD%A5%EF%BC%9A%E6%95%B0%E6%8D%AE%E5%8A%A0%E8%BD%BD%E5%99%A8%E4%B8%8E-rollout%EF%BC%88scorer-%E5%9C%A8%E8%BF%99%E9%87%8C%EF%BC%89"><span class="nav-number">4.2.</span> <span class="nav-text">第 2 步：数据加载器与 rollout（scorer 在这里）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%AC%AC-3-%E6%AD%A5%EF%BC%9AAdapter%E3%80%81%E6%B3%A8%E5%86%8C%E4%B8%8E%E9%85%8D%E7%BD%AE"><span class="nav-number">4.3.</span> <span class="nav-text">第 3 步：Adapter、注册与配置</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%94%E3%80%81%E6%8B%BF%E5%88%B0-best-skill-md-%E4%B9%8B%E5%90%8E"><span class="nav-number">5.</span> <span class="nav-text">五、拿到 best_skill.md 之后</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD%E3%80%81%E5%B7%A5%E7%A8%8B%E5%88%A4%E6%96%AD%EF%BC%9A%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E5%80%BC%E5%BE%97%E8%AE%AD"><span class="nav-number">6.</span> <span class="nav-text">六、工程判断：什么时候值得训</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#FAQ"><span class="nav-number">7.</span> <span class="nav-text">FAQ</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#SkillOpt-%E4%BC%9A%E4%BF%AE%E6%94%B9%E6%A8%A1%E5%9E%8B%E6%9D%83%E9%87%8D%E5%90%97%EF%BC%9F"><span class="nav-number">7.1.</span> <span class="nav-text">SkillOpt 会修改模型权重吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%83%E5%92%8C-TextGrad%E3%80%81GEPA%E3%80%81DSPy-%E8%BF%99%E7%B1%BB%E6%8F%90%E7%A4%BA%E8%AF%8D%E4%BC%98%E5%8C%96%E6%9C%89%E4%BB%80%E4%B9%88%E5%8C%BA%E5%88%AB%EF%BC%9F"><span class="nav-number">7.2.</span> <span class="nav-text">它和 TextGrad、GEPA、DSPy 这类提示词优化有什么区别？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%B2%A1%E6%9C%89%E6%A0%87%E6%B3%A8%E5%A5%BD%E7%9A%84%E7%BC%BA%E9%99%B7%E6%B8%85%E5%8D%95%EF%BC%8C%E8%BF%98%E8%83%BD%E8%AE%AD%E4%BB%A3%E7%A0%81%E8%AF%84%E5%AE%A1%E6%8A%80%E8%83%BD%E5%90%97%EF%BC%9F"><span class="nav-number">7.3.</span> <span class="nav-text">没有标注好的缺陷清单，还能训代码评审技能吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BC%98%E5%8C%96%E5%99%A8%E7%94%A8%E5%A4%9A%E5%A4%A7%E7%9A%84%E6%A8%A1%E5%9E%8B%EF%BC%9F%E8%AE%AD%E7%BB%83%E8%B4%B5%E4%B8%8D%E8%B4%B5%EF%BC%9F"><span class="nav-number">7.4.</span> <span class="nav-text">优化器用多大的模型？训练贵不贵？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E8%AF%AD"><span class="nav-number">8.</span> <span class="nav-text">结语</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

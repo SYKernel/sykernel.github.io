@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="对比 Android CLI 与 Android Skills 的能力边界，给出六阶段 Agent 工作流、三个实战示例与六条团队接入边界，基于 2026-08-11 实测核验 CLI 1.0.15985488 与 skills v1.0.7。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Android CLI 与 Android Skills 最佳实践：把 AI Agent 接入可验证的 Android 开发流程">
+<meta property="og:url" content="https://blog.shuying.me/2026/08/11/2026-08-11-android-cli-android-skills-best-practice/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="对比 Android CLI 与 Android Skills 的能力边界，给出六阶段 Agent 工作流、三个实战示例与六条团队接入边界，基于 2026-08-11 实测核验 CLI 1.0.15985488 与 skills v1.0.7。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/android-cli-skills-cover.png">
+<meta property="article:published_time" content="2026-08-11T07:30:00.000Z">
+<meta property="article:modified_time" content="2026-08-16T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="Android CLI">
+<meta property="article:tag" content="Android Skills">
+<meta property="article:tag" content="AI Agent">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/android-cli-skills-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/08/11/2026-08-11-android-cli-android-skills-best-practice/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Android CLI 与 Android Skills 最佳实践：把 AI Agent 接入可验证的 Android 开发流程 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/08/11/2026-08-11-android-cli-android-skills-best-practice/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Android CLI 与 Android Skills 最佳实践：把 AI Agent 接入可验证的 Android 开发流程
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-08-11 15:30:00" itemprop="dateCreated datePublished" datetime="2026-08-11T15:30:00+08:00">2026-08-11</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-08-17 00:00:00" itemprop="dateModified" datetime="2026-08-17T00:00:00+08:00">2026-08-17</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">对比 Android CLI 与 Android Skills 的能力边界，给出六阶段 Agent 工作流、三个实战示例与六条团队接入边界，基于 2026-08-11 实测核验 CLI 1.0.15985488 与 skills v1.0.7。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/android-cli-skills-cover.png" itemprop="contentUrl">
+        </div>
+        <p>Android 开发接入 AI Agent 后，难点很快会从 Kotlin 代码生成转向工程执行：Agent 不知道本机 SDK 状态、拿不到设备界面、依赖了过期文档，或者修改完成后没有可靠的验收路径。</p>
+<p>Google 推出的 <a target="_blank" rel="noopener" href="https://developer.android.com/tools/agents/android-cli">Android CLI</a> 和 <a target="_blank" rel="noopener" href="https://github.com/android/skills">Android Skills</a> 分别补了这两块：Android CLI 给 Agent 一组可执行、可返回结构化结果的 Android 工具；Android Skills 用 <code>SKILL.md</code> 固化具体任务的官方工作流、约束和参考资料。二者配合后，Agent 才能从「生成一段代码」走到「读取工程、查官方文档、修改代码、部署设备、检查结果」。</p>
+<p>本文基于 2026 年 8 月 11 日的环境核验：Android CLI 版本为 <code>1.0.15985488</code>，<code>android/skills</code> 仓库最新标签为 <code>v1.0.7</code>，仓库中共有 22 个 <code>SKILL.md</code>。这套工具仍在快速更新，文中的命令应结合本机 <code>android help</code> 和 <code>android &lt;command&gt; --help</code> 使用。</p>
+<blockquote>
+<p><strong>Key Takeaways</strong></p>
+<ul>
+<li>Android CLI 提供环境、文档、工程、设备、界面与 Android Studio 的可执行入口；Android Skills 用 <code>SKILL.md</code> 固化任务级操作规程。两者解决不同问题：执行 vs 工作流。</li>
+<li>把 Agent 任务拆成六阶段：建立环境基线、选择技能、查询资料、修改与静态检查、部署、UI 或性能验收。最容易省略的是第 1 步和第 6 步。</li>
+<li>按任务安装少量 Skill，提示词写清范围与验收条件，高风险修改采用「分析」与「执行」两阶段，最终以编译、测试、布局、截图或 trace 结果判断完成。</li>
+</ul>
+</blockquote>
+<h2 id="Android-CLI-解决的是执行问题"><a href="#Android-CLI-解决的是执行问题" class="headerlink" title="Android CLI 解决的是执行问题"></a>Android CLI 解决的是执行问题</h2><p>Android CLI 是面向 Android 开发工具和 AI Agent 的统一命令行入口。它没有替代 Gradle、ADB、SDK Manager 或 Android Studio，而是把常见操作整理成更容易发现、调用和解析的命令。</p>
+<p>当前版本的主要能力可以分为五组：</p>
+<figure>
+<svg viewBox="0 0 960 300" style="max-width:100%;height:auto;font-family:system-ui,-apple-system,sans-serif" role="img" aria-label="Android CLI 五大能力分组图,展示环境与SDK、工程与构建产物、设备与模拟器、界面检查、文档与IDE五组核心能力及各自解决的问题">
+<title>Android CLI 五组核心能力</title>
+<desc>横向分组卡片展示 Android CLI 的五组能力:环境与SDK(info, sdk list/install)、工程与构建产物(create, describe)、设备与模拟器(emulator, install, run)、界面检查(layout, screen capture/resolve)、文档与IDE(docs, studio)。</desc>
+<text x="480" y="28" text-anchor="middle" font-size="17" font-weight="700" fill="currentColor">Android CLI 五组核心能力</text>
+<g>
+<rect x="20" y="56" width="170" height="120" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="40" cy="78" r="5" fill="#f97316"/>
+<text x="52" y="82" font-size="13" font-weight="600" fill="currentColor">环境与 SDK</text>
+<text x="30" y="106" font-size="10.5" fill="currentColor" opacity="0.7">android info</text>
+<text x="30" y="122" font-size="10.5" fill="currentColor" opacity="0.7">sdk list/install</text>
+<text x="30" y="146" font-size="10" fill="currentColor" opacity="0.55">补齐平台与构建工具</text>
+<text x="30" y="162" font-size="10" fill="currentColor" opacity="0.55">减少环境猜测</text>
+</g>
+<g>
+<rect x="210" y="56" width="170" height="120" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="230" cy="78" r="5" fill="#38bdf8"/>
+<text x="242" y="82" font-size="13" font-weight="600" fill="currentColor">工程与构建产物</text>
+<text x="220" y="106" font-size="10.5" fill="currentColor" opacity="0.7">android create</text>
+<text x="220" y="122" font-size="10.5" fill="currentColor" opacity="0.7">android describe</text>
+<text x="220" y="146" font-size="10" fill="currentColor" opacity="0.55">模块与 APK 产物</text>
+<text x="220" y="162" font-size="10" fill="currentColor" opacity="0.55">结构化描述</text>
+</g>
+<g>
+<rect x="400" y="56" width="170" height="120" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="420" cy="78" r="5" fill="#a78bfa"/>
+<text x="432" y="82" font-size="13" font-weight="600" fill="currentColor">设备与模拟器</text>
+<text x="410" y="106" font-size="10.5" fill="currentColor" opacity="0.7">android emulator</text>
+<text x="410" y="122" font-size="10.5" fill="currentColor" opacity="0.7">install / run</text>
+<text x="410" y="146" font-size="10" fill="currentColor" opacity="0.55">管理 AVD,部署 APK</text>
+<text x="410" y="162" font-size="10" fill="currentColor" opacity="0.55">启动组件</text>
+</g>
+<g>
+<rect x="590" y="56" width="170" height="120" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="610" cy="78" r="5" fill="#22c55e"/>
+<text x="622" y="82" font-size="13" font-weight="600" fill="currentColor">界面检查</text>
+<text x="600" y="106" font-size="10.5" fill="currentColor" opacity="0.7">android layout</text>
+<text x="600" y="122" font-size="10.5" fill="currentColor" opacity="0.7">screen capture/resolve</text>
+<text x="600" y="146" font-size="10" fill="currentColor" opacity="0.55">布局树,截图,坐标</text>
+<text x="600" y="162" font-size="10" fill="currentColor" opacity="0.55">UI 调试与自动化</text>
+</g>
+<g>
+<rect x="780" y="56" width="170" height="120" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="800" cy="78" r="5" fill="#f97316"/>
+<text x="812" y="82" font-size="13" font-weight="600" fill="currentColor">文档与 IDE</text>
+<text x="790" y="106" font-size="10.5" fill="currentColor" opacity="0.7">android docs</text>
+<text x="790" y="122" font-size="10.5" fill="currentColor" opacity="0.7">android studio</text>
+<text x="790" y="146" font-size="10" fill="currentColor" opacity="0.55">官方知识库查询</text>
+<text x="790" y="162" font-size="10" fill="currentColor" opacity="0.55">IDE 索引与 Preview</text>
+</g>
+<text x="480" y="208" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.5">命令形式以本机 android help 与 android &lt;command&gt; --help 为准</text>
+<text x="480" y="226" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.35">核验版本:Android CLI 1.0.15985488(2026-08-11)</text>
+</svg>
+<figcaption>Android CLI 的五组核心能力及其解决的问题域,命令形式以本机 <code>android help</code> 为准。</figcaption>
+</figure>
+
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>常用命令</th>
+<th>适合解决的问题</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>环境与 SDK</td>
+<td><code>android info</code>、<code>android sdk list/install/update/remove</code></td>
+<td>确认 SDK 路径、补齐平台和构建工具、减少环境猜测</td>
+</tr>
+<tr>
+<td>工程与构建产物</td>
+<td><code>android create</code>、<code>android describe</code></td>
+<td>从模板创建工程，生成模块与 APK 产物的结构化描述</td>
+</tr>
+<tr>
+<td>设备与模拟器</td>
+<td><code>android emulator</code>、<code>android install</code>、<code>android run</code></td>
+<td>管理 AVD，安装 APK，启动 Activity、Service、Wear OS 组件</td>
+</tr>
+<tr>
+<td>界面检查</td>
+<td><code>android layout</code>、<code>android screen capture/resolve</code></td>
+<td>获取布局树、截图和可点击坐标，支持 UI 调试与自动化</td>
+</tr>
+<tr>
+<td>文档与 IDE</td>
+<td><code>android docs</code>、<code>android studio</code></td>
+<td>查询官方知识库，连接 Android Studio 做符号、检查和 Compose Preview 操作</td>
+</tr>
+</tbody></table>
+<p>这层能力的价值在于让 Agent 拿到证据。例如，排查「登录按钮被导航栏遮住」时，只有代码生成能力还不够。Agent 至少要知道当前设备、运行中的 APK、布局树和屏幕截图，修改后还要重新部署并检查按钮位置。</p>
+<h3 id="安装与初始化"><a href="#安装与初始化" class="headerlink" title="安装与初始化"></a>安装与初始化</h3><p>官方安装页提供 macOS、Linux 和 Windows 的安装包。安装完成后，先确认版本、SDK 路径和设备状态：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">android --version</span><br><span class="line">android info</span><br><span class="line">android <span class="built_in">help</span></span><br></pre></td></tr></table></figure>
+
+<p><code>android info</code> 会输出 CLI 使用的 SDK 路径。机器上存在多个 Android SDK 时，可以通过全局参数临时指定：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">android --sdk=<span class="string">&quot;<span class="variable">$HOME</span>/Library/Android/sdk&quot;</span> info</span><br></pre></td></tr></table></figure>
+
+<p>随后运行初始化命令，让 Agent 获得 Android CLI 的使用说明：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">android init</span><br></pre></td></tr></table></figure>
+
+<p>初始化不是项目构建步骤，它负责准备 CLI 配置和默认技能。团队脚本仍应显式检查 Java、Gradle、SDK package 和设备状态，不能把环境前提全部交给初始化命令。</p>
+<blockquote>
+<p>公司内部开发环境还是要注意下数据收集说明。<a target="_blank" rel="noopener" href="https://developer.android.com/tools/agents/android-cli">Android CLI 官方文档的「Data collected」章节</a>有声明，Android CLI 会记录命令与子命令的调用、非位置参数名称、部分预定义选项值，以及匿名化后的异常堆栈；不会收集 CLI 返回内容、用户自定义输入、Maven 坐标、本地文件路径或项目名称。涉及内部项目时，需要按公司的开发工具与网络策略综合评估。</p>
+</blockquote>
+<h3 id="用-docs-查询官方资料"><a href="#用-docs-查询官方资料" class="headerlink" title="用 docs 查询官方资料"></a>用 <code>docs</code> 查询官方资料</h3><p>Agent 写 Android 代码时，版本知识过期比语法错误更难发现。<code>android docs</code> 使用两步式查询：先搜索知识库，再根据返回的 <code>kb://</code> 地址获取正文。</p>
+<p>下面的命令用于查找 edge-to-edge 的官方说明：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">android docs search <span class="string">&quot;edge-to-edge Compose system bars&quot;</span></span><br><span class="line">android docs fetch kb://android/develop/ui/compose/system/setup-e2e</span><br></pre></td></tr></table></figure>
+
+<p>第二条命令中的 <code>kb://</code> 地址要使用搜索结果返回的真实值，不能预先拼接。把「先搜索、再读取来源」写进任务要求，可以减少 Agent 依赖记忆回答 API 版本、迁移步骤和兼容性问题。</p>
+<h3 id="用-describe-消除工程结构猜测"><a href="#用-describe-消除工程结构猜测" class="headerlink" title="用 describe 消除工程结构猜测"></a>用 <code>describe</code> 消除工程结构猜测</h3><p>多模块项目里（参见 <a href="/2016/04/20/2016-04-20-Android%20Gradle%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E7%B3%BB%E5%88%975/" title="Gradle 多模块构建">Gradle 多模块构建</a>），Agent 经常会猜错应用模块、构建变体或 APK 路径。<code>describe</code> 会分析项目并输出描述构建目标和产物位置的 JSON 文件路径：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">android describe --project_dir=.</span><br></pre></td></tr></table></figure>
+
+<p>这条命令适合放在部署动作之前。Agent 应先读取结果，再决定使用哪个 APK，而不是默认产物总在 <code>app/build/outputs/apk/debug/app-debug.apk</code>。</p>
+<p>现有工程的编译仍应调用仓库自己的 Gradle Wrapper。一个稳定的顺序如下：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">./gradlew :app:assembleDebug</span><br><span class="line">android describe --project_dir=.</span><br><span class="line">android run --apks=app/build/outputs/apk/debug/app-debug.apk \</span><br><span class="line">  --device=emulator-5554</span><br></pre></td></tr></table></figure>
+
+<p><code>android run</code> 负责部署并启动组件。只安装、不启动时使用 <code>android install</code>。新版本还提供 <code>--use-delta-install</code>，它会在增量迭代中减少传输量；首次安装、安装异常或需要排除增量状态影响时，可以关闭这项优化并重新安装。</p>
+<h3 id="布局树与截图要配合使用"><a href="#布局树与截图要配合使用" class="headerlink" title="布局树与截图要配合使用"></a>布局树与截图要配合使用</h3><p><code>android layout</code> 返回当前应用的布局树 JSON。排查文本、可访问性属性、节点边界和层级变化时，它通常比只看截图更直接：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">android layout --pretty --output=artifacts/layout.json</span><br><span class="line">android layout --diff</span><br></pre></td></tr></table></figure>
+
+<p><code>--diff</code> 返回相对上一次布局快照发生变化的元素，适合检查点击、展开、键盘弹出后的 UI 状态。</p>
+<p>截图处理的是布局树表达不了的问题，例如颜色对比度、图像裁切、系统栏图标是否清楚、元素是否发生视觉遮挡：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">android screen capture --output=artifacts/home.png</span><br><span class="line">android screen capture --annotate --output=artifacts/home-annotated.png</span><br></pre></td></tr></table></figure>
+
+<p>验收 UI 时不要在两者之间二选一。布局树负责回答「节点在哪里、属性是什么」，截图负责回答「最终画面是什么样」。涉及点击自动化时，还可以用 <code>screen resolve</code> 把带编号标注的截图目标转换为坐标：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">android screen resolve \</span><br><span class="line">  --screenshot=artifacts/home-annotated.png \</span><br><span class="line">  --string=<span class="string">&quot;input tap #5&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p><code>screen resolve</code> 只识别 <code>screen capture --annotate</code> 生成的编号，普通截图不能直接用于坐标替换。</p>
+<h3 id="studio-命令把-IDE-能力开放给-Agent"><a href="#studio-命令把-IDE-能力开放给-Agent" class="headerlink" title="studio 命令把 IDE 能力开放给 Agent"></a><code>studio</code> 命令把 IDE 能力开放给 Agent</h3><p>Android CLI 新增了 <code>studio</code> 命令，可连接正在运行的 Android Studio（从早期的 <a href="/2021/12/25/2015-10-04-AndroidStudio-Develop-Guide/" title="AndroidStudio 插件效率工具">AndroidStudio 插件效率工具</a> 到如今 CLI 化的 Agent 工具，IDE 能力正在向可被 Agent 调用的方向演进），执行以下操作：</p>
+<ul>
+<li><code>find-declaration</code> 和 <code>find-usages</code>：使用 IDE 索引查定义与引用，适合 Kotlin、Java 和资源符号定位。</li>
+<li><code>analyze-file</code>：返回指定文件中的错误、警告和 Lint 问题。</li>
+<li><code>render-compose-preview</code>：渲染 Compose Preview，并可输出图片和语义树。</li>
+<li><code>version-lookup</code>：查询 Maven 依赖、Android 版本等当前可用版本。</li>
+</ul>
+<p>这部分目前有明确前提：项目需要在 Android Studio Quail 2 Canary 1 或更高版本中打开，同时启用并登录 Gemini in Android Studio（见 <a target="_blank" rel="noopener" href="https://developer.android.com/tools/agents/android-cli">Android CLI 文档的 <code>studio</code> 命令说明</a>）。使用前先检查连接状态：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">android studio check</span><br></pre></td></tr></table></figure>
+
+<p>IDE 没有连接时，应回到 Gradle、源码检索和设备验证，不要让整个任务卡在 <code>studio</code> 子命令上。</p>
+<h2 id="Android-Skills-解决的是工作流问题"><a href="#Android-Skills-解决的是工作流问题" class="headerlink" title="Android Skills 解决的是工作流问题"></a>Android Skills 解决的是工作流问题</h2><p>Android Skills 是遵循 <a target="_blank" rel="noopener" href="https://agentskills.io/">Agent Skills 开放规范</a> 的模块化说明。每个技能以 <code>SKILL.md</code> 为入口，可以附带 <code>references/</code>、<code>scripts/</code> 和其他资源。Agent 根据技能的 <code>name</code> 与 <code>description</code> 判断当前任务是否需要加载它，再按正文中的步骤和约束执行。</p>
+<p>一个 Skill 通常包含四类信息：</p>
+<ul>
+<li>触发条件：说明什么任务应该使用该技能，避免只凭技能名称匹配。</li>
+<li>执行顺序：规定先检查什么、运行什么命令、在哪些条件下切换分支。</li>
+<li>领域约束：记录版本门槛、禁止项、验证方式和输出格式。</li>
+<li>配套资源：提供官方文档副本、脚本、查询模板或报告模板，减少临时搜索和现场编造。</li>
+</ul>
+<p>官方仓库没有追求覆盖所有 Android 基础知识。<a target="_blank" rel="noopener" href="https://github.com/android/skills">README 明确说明</a>，技能建设优先选择评测中 LLM 表现较弱的任务，基本 Compose 最佳实践这类模型已经较熟悉的内容并非当前重点。</p>
+<p>这个取向决定了 Skills 的正确用法：把它当作任务级操作规程，不把它当作 Android 百科全书。</p>
+<h3 id="当前技能覆盖了哪些任务"><a href="#当前技能覆盖了哪些任务" class="headerlink" title="当前技能覆盖了哪些任务"></a>当前技能覆盖了哪些任务</h3><p>截至本文核验时，官方仓库有 22 个技能。下面按工作类型归类，具体列表以 <code>android skills list --long</code> 为准：</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>代表技能</th>
+<th>它补充的能力</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>构建与体积</td>
+<td><code>agp-9-upgrade</code>、<code>r8-analyzer</code></td>
+<td>版本迁移、R8 配置检查、量化或启发式规则分析</td>
+</tr>
+<tr>
+<td>性能分析</td>
+<td><code>perfetto-sql</code>、<code>perfetto-trace-analysis</code></td>
+<td>生成有效的 Perfetto SQL，沿线程状态和依赖关系定位瓶颈</td>
+</tr>
+<tr>
+<td>UI 与迁移</td>
+<td><code>edge-to-edge</code>、<code>adaptive</code>、<code>navigation-3</code>、<code>migrate-xml-views-to-jetpack-compose</code></td>
+<td>系统栏适配、自适应布局、导航和 View 到 Compose 迁移</td>
+</tr>
+<tr>
+<td>测试</td>
+<td><code>testing-setup</code></td>
+<td>识别现有测试栈，配置单元、UI、截图和端到端测试</td>
+</tr>
+<tr>
+<td>安全与合规</td>
+<td><code>android-intent-security</code>、<code>play-policy-insights</code></td>
+<td>Intent 安全审计、权限和 Play 政策检查</td>
+</tr>
+<tr>
+<td>设备形态与媒体</td>
+<td><code>wear-compose-m3</code>、<code>leanback-to-compose-tv-migration</code>、<code>camerax</code>、<code>media3-cast-integration</code></td>
+<td>Wear OS、TV、CameraX 和 Cast 的专项实现约束</td>
+</tr>
+</tbody></table>
+<p>同一个技能也可能包含严格边界。<a target="_blank" rel="noopener" href="https://github.com/android/skills/tree/main/performance/r8-analyzer"><code>r8-analyzer</code></a> 默认只分析并输出报告，不允许直接修改文件（SKILL.md 明确写明「No code changes: Research and suggest only; Do not modify files」）；<a target="_blank" rel="noopener" href="https://github.com/android/skills/tree/main/profilers/perfetto-trace-analysis"><code>perfetto-trace-analysis</code></a> 要求先在证据链（Chain of Evidence）中记录已验证证据，再沿线程阻塞关系追到依赖方，不能在等待中的线程上结束分析；<code>edge-to-edge</code> 要求检查 <code>targetSdk</code>、Activity、列表、FAB 和 IME，避免只加一行 <code>enableEdgeToEdge()</code> 就结束任务。</p>
+<p>这些限制比一段「请按最佳实践修改」的提示词更可靠，因为 Agent 能看到明确的步骤、分支和完成条件。</p>
+<h2 id="安装-Skills：先按项目，再按任务"><a href="#安装-Skills：先按项目，再按任务" class="headerlink" title="安装 Skills：先按项目，再按任务"></a>安装 Skills：先按项目，再按任务</h2><p>查看可用技能和详细说明：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">android skills list --long</span><br><span class="line">android skills find performance</span><br></pre></td></tr></table></figure>
+
+<p>给当前项目安装一个技能：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">android skills add r8-analyzer --project=.</span><br></pre></td></tr></table></figure>
+
+<p>安装全部技能：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">android skills add --all --project=.</span><br></pre></td></tr></table></figure>
+
+<p>官方 <a target="_blank" rel="noopener" href="https://github.com/android/skills">README</a> 和本机 CLI 在预览期可能出现参数形式差异。本文实测版本使用位置参数 <code>r8-analyzer</code>，官方 README 和 <a target="_blank" rel="noopener" href="https://developer.android.com/tools/agents/android-cli">CLI 文档</a> 展示的都是 <code>--skill=r8-analyzer</code>。遇到这种情况，先运行：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">android skills add --<span class="built_in">help</span></span><br></pre></td></tr></table></figure>
+
+<p>项目级安装适合团队共享。Skill 跟随仓库后，每位开发者和 CI Agent 可以使用同一版操作规程（CI 集成可参考 <a href="/2016/05/02/2016-05-02-Android%20Gradle%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E7%B3%BB%E5%88%978/" title="Gradle 与 CI 集成实践">Gradle 与 CI 集成实践</a>），也方便在代码评审里查看技能更新。全局安装更适合 <code>android-cli</code>、<code>perfetto-sql</code> 这类跨项目通用技能。</p>
+<p>不建议默认执行 <code>--all</code>。技能越多，Agent 的可选路径越多，触发冲突和读取无关材料的概率也越高。更稳妥的配置是：</p>
+<ol>
+<li>全局保留 <code>android-cli</code>，让 Agent 知道如何查询环境、文档、设备和技能。</li>
+<li>项目内只安装当前技术栈需要的技能，例如 Compose 项目安装 <code>edge-to-edge</code> 和 <code>testing-setup</code>（测试基础设施可参考 <a href="/2026/08/18/2023-02-20-Android%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95%E5%AE%9E%E8%B7%B5/" title="Android 单元测试实践">Android 单元测试实践</a>）。</li>
+<li>碰到专项任务再安装 <code>r8-analyzer</code>、<code>perfetto-trace-analysis</code> 或迁移类技能。</li>
+<li>使用 <code>android skills list --long --project=.</code> 定期检查安装位置和状态。</li>
+</ol>
+<p><code>android skills add</code> 也承担更新功能。<a target="_blank" rel="noopener" href="https://developer.android.com/tools/agents/android-cli">官方文档提醒</a>，自定义官方技能时要先改名，否则下次更新会覆盖修改。团队自己的规则应放在独立技能中，不要直接改官方目录。</p>
+<h2 id="一条可复用的-Agent-工作流"><a href="#一条可复用的-Agent-工作流" class="headerlink" title="一条可复用的 Agent 工作流"></a>一条可复用的 Agent 工作流</h2><p>Android CLI 与 Android Skills 配合时，可以把任务分成六个阶段：</p>
+<figure>
+<svg viewBox="0 0 960 360" style="max-width:100%;height:auto;font-family:system-ui,-apple-system,sans-serif" role="img" aria-label="六阶段 Agent 工作流横向流程图,从建立环境基线到 UI 与性能验收,每阶段标注可复查的产出证据">
+<title>Android CLI 与 Skills 配合的六阶段 Agent 工作流</title>
+<desc>横向流程图展示 Agent 任务的六个阶段及每阶段可复查证据:1 环境基线(CLI版本/SDK/设备),2 选择技能(技能名/版本前提),3 查询资料(文档/API版本),4 修改与静态检查(diff/测试/Lint),5 部署交互(APK/设备/启动),6 UI或性能验收(JSON/PNG/trace)。最容易省略的是第1步和第6步。</desc>
+<text x="480" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="currentColor">六阶段 Agent 工作流</text>
+<g>
+<rect x="20" y="60" width="140" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="40" cy="82" r="13" fill="#f97316"/>
+<text x="40" y="86" text-anchor="middle" font-size="13" font-weight="800" fill="white">1</text>
+<text x="60" y="86" font-size="13" font-weight="600" fill="currentColor">环境基线</text>
+<text x="30" y="112" font-size="10.5" fill="currentColor" opacity="0.7">CLI 版本</text>
+<text x="30" y="128" font-size="10.5" fill="currentColor" opacity="0.7">SDK 路径</text>
+<text x="30" y="144" font-size="10.5" fill="currentColor" opacity="0.7">设备序列号</text>
+<text x="30" y="160" font-size="10.5" fill="currentColor" opacity="0.7">Git 状态</text>
+</g>
+<line x1="160" y1="115" x2="176" y2="115" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+<polygon points="176,115 168,110 168,120" fill="currentColor" opacity="0.4"/>
+<g>
+<rect x="178" y="60" width="140" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="198" cy="82" r="13" fill="#38bdf8"/>
+<text x="198" y="86" text-anchor="middle" font-size="13" font-weight="800" fill="white">2</text>
+<text x="218" y="86" font-size="13" font-weight="600" fill="currentColor">选择技能</text>
+<text x="188" y="112" font-size="10.5" fill="currentColor" opacity="0.7">技能名称</text>
+<text x="188" y="128" font-size="10.5" fill="currentColor" opacity="0.7">适用条件</text>
+<text x="188" y="144" font-size="10.5" fill="currentColor" opacity="0.7">版本前提</text>
+</g>
+<line x1="318" y1="115" x2="334" y2="115" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+<polygon points="334,115 326,110 326,120" fill="currentColor" opacity="0.4"/>
+<g>
+<rect x="336" y="60" width="140" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="356" cy="82" r="13" fill="#a78bfa"/>
+<text x="356" y="86" text-anchor="middle" font-size="13" font-weight="800" fill="white">3</text>
+<text x="376" y="86" font-size="13" font-weight="600" fill="currentColor">查询资料</text>
+<text x="346" y="112" font-size="10.5" fill="currentColor" opacity="0.7">文档地址</text>
+<text x="346" y="128" font-size="10.5" fill="currentColor" opacity="0.7">API 版本</text>
+<text x="346" y="144" font-size="10.5" fill="currentColor" opacity="0.7">库版本</text>
+</g>
+<line x1="476" y1="115" x2="492" y2="115" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+<polygon points="492,115 484,110 484,120" fill="currentColor" opacity="0.4"/>
+<g>
+<rect x="494" y="60" width="140" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="514" cy="82" r="13" fill="#22c55e"/>
+<text x="514" y="86" text-anchor="middle" font-size="13" font-weight="800" fill="white">4</text>
+<text x="534" y="86" font-size="13" font-weight="600" fill="currentColor">修改检查</text>
+<text x="504" y="112" font-size="10.5" fill="currentColor" opacity="0.7">编译 diff</text>
+<text x="504" y="128" font-size="10.5" fill="currentColor" opacity="0.7">测试结果</text>
+<text x="504" y="144" font-size="10.5" fill="currentColor" opacity="0.7">Lint 输出</text>
+</g>
+<line x1="634" y1="115" x2="650" y2="115" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+<polygon points="650,115 642,110 642,120" fill="currentColor" opacity="0.4"/>
+<g>
+<rect x="652" y="60" width="140" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="672" cy="82" r="13" fill="#f97316"/>
+<text x="672" y="86" text-anchor="middle" font-size="13" font-weight="800" fill="white">5</text>
+<text x="692" y="86" font-size="13" font-weight="600" fill="currentColor">部署交互</text>
+<text x="662" y="112" font-size="10.5" fill="currentColor" opacity="0.7">APK 路径</text>
+<text x="662" y="128" font-size="10.5" fill="currentColor" opacity="0.7">设备序列</text>
+<text x="662" y="144" font-size="10.5" fill="currentColor" opacity="0.7">启动状态</text>
+</g>
+<line x1="792" y1="115" x2="808" y2="115" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+<polygon points="808,115 800,110 800,120" fill="currentColor" opacity="0.4"/>
+<g>
+<rect x="810" y="60" width="140" height="110" rx="10" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+<circle cx="830" cy="82" r="13" fill="#38bdf8"/>
+<text x="830" y="86" text-anchor="middle" font-size="13" font-weight="800" fill="white">6</text>
+<text x="850" y="86" font-size="13" font-weight="600" fill="currentColor">验收证据</text>
+<text x="820" y="112" font-size="10.5" fill="currentColor" opacity="0.7">布局 JSON</text>
+<text x="820" y="128" font-size="10.5" fill="currentColor" opacity="0.7">截图 PNG</text>
+<text x="820" y="144" font-size="10.5" fill="currentColor" opacity="0.7">trace 结果</text>
+</g>
+<text x="180" y="200" font-size="11" font-weight="600" fill="#f97316" opacity="0.85">↑ 最容易省略</text>
+<text x="810" y="200" font-size="11" font-weight="600" fill="#38bdf8" opacity="0.85">↑ 最容易省略</text>
+<text x="480" y="232" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.5">没有环境基线,Agent 会在错误的 SDK、模块或设备上工作;没有最终证据,「代码已修改」不等于「问题已解决」。</text>
+</svg>
+<figcaption>Android CLI 与 Skills 配合的六阶段 Agent 工作流,第 1 步与第 6 步最易被省略,每阶段标注可复查的产出证据。</figcaption>
+</figure>
+
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>Agent 应做的事</th>
+<th>证据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1. 建立环境基线</td>
+<td>读取项目规则，运行 <code>android info</code>，确认 Gradle 与设备</td>
+<td>CLI 版本、SDK 路径、设备序列号、Git 状态</td>
+</tr>
+<tr>
+<td>2. 选择技能</td>
+<td>根据任务查找并加载一个主技能，必要时增加一个辅助技能</td>
+<td>技能名称、适用条件、版本前提</td>
+</tr>
+<tr>
+<td>3. 查询最新资料</td>
+<td>使用 <code>android docs search/fetch</code> 或技能附带参考资料</td>
+<td>官方文档地址、适用 API 或库版本</td>
+</tr>
+<tr>
+<td>4. 修改与静态检查</td>
+<td>按技能步骤改代码，运行目标模块测试、Lint 或 <code>studio analyze-file</code></td>
+<td>diff、编译结果、测试结果、Lint 输出</td>
+</tr>
+<tr>
+<td>5. 部署与交互</td>
+<td>用 <code>describe</code> 确认 APK，再使用 <code>install/run</code> 部署</td>
+<td>APK 路径、设备、启动组件、命令退出状态</td>
+</tr>
+<tr>
+<td>6. UI 或性能验收</td>
+<td>使用布局树、截图、Compose Preview 或 Perfetto 数据检查</td>
+<td>JSON、PNG、trace 查询结果、失败分支</td>
+</tr>
+</tbody></table>
+<p>这里最容易省略的是第 1 步和第 6 步。没有环境基线，Agent 会在错误的 SDK、模块或设备上工作；没有最终证据，「代码已经修改」只能证明文件发生了变化，不能证明问题已经解决。</p>
+<h3 id="示例：修复-Compose-页面-edge-to-edge-问题"><a href="#示例：修复-Compose-页面-edge-to-edge-问题" class="headerlink" title="示例：修复 Compose 页面 edge-to-edge 问题"></a>示例：修复 Compose 页面 edge-to-edge 问题</h3><p>一个可执行的任务描述应包含目标、范围、约束和验收方式：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">修复登录页在 Android 15 上被状态栏、导航栏和 IME 遮挡的问题。</span><br><span class="line"></span><br><span class="line">要求：</span><br><span class="line">- 使用项目中的 edge-to-edge Skill，并先检查它的前置条件。</span><br><span class="line">- 只修改登录流程相关 Activity、Composable、Manifest 和测试。</span><br><span class="line">- 保留当前 Material 3 主题，不引入新的 UI 框架。</span><br><span class="line">- 先用 android docs 查询当前 edge-to-edge 与 IME 官方说明。</span><br><span class="line">- 修改后运行相关编译和测试，部署到 emulator-5554。</span><br><span class="line">- 分别记录键盘关闭、键盘打开时的 android layout 输出和截图。</span><br><span class="line">- 报告改动文件、验证命令、结果和仍未覆盖的设备形态。</span><br></pre></td></tr></table></figure>
+
+<p>这段任务会引导 Agent 读取 <code>edge-to-edge</code> Skill 中的完整检查项：<code>targetSdk 35+</code>、<code>enableEdgeToEdge()</code> 的位置、<code>Scaffold</code> 的 <code>PaddingValues</code>、insets 是否重复消费、<code>adjustResize</code> 和 IME 处理。验收又会迫使它检查运行结果，避免只完成源码层修改。</p>
+<h3 id="示例：分析-R8-规则时不要授权自动删除"><a href="#示例：分析-R8-规则时不要授权自动删除" class="headerlink" title="示例：分析 R8 规则时不要授权自动删除"></a>示例：分析 R8 规则时不要授权自动删除</h3><p>R8 keep rule 涉及反射、序列化、JNI 和三方库 consumer rules。删除一条看似宽泛的规则，可能只在 Release 包的某条低频路径上崩溃。</p>
+<p>适合给 Agent 的任务是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">使用 r8-analyzer 分析 app 模块的 Release R8 配置。</span><br><span class="line">只生成报告，不修改 proguard-rules.pro 或 Gradle 文件。</span><br><span class="line">报告中区分可量化结果与启发式判断，并列出每条建议需要覆盖的回归场景。</span><br></pre></td></tr></table></figure>
+
+<p>官方 Skill 会根据 AGP 与 R8 版本选择独立 Gradle task、量化分析或启发式检查。它还明确限制「只分析，不改文件」。先保留这条边界，人工确认反射入口和回归测试（用 Gradle 编排测试任务可参考 <a href="/2016/04/25/2016-04-25-Android%20Gradle%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E7%B3%BB%E5%88%976/" title="Gradle 运行测试任务">Gradle 运行测试任务</a>）后，再创建单独的修改任务。</p>
+<h3 id="示例：Perfetto-分析必须沿等待关系继续查"><a href="#示例：Perfetto-分析必须沿等待关系继续查" class="headerlink" title="示例：Perfetto 分析必须沿等待关系继续查"></a>示例：Perfetto 分析必须沿等待关系继续查</h3><p>性能任务最怕把「长 slice」直接当成「CPU 执行很久」。线程可能处于 Runnable、Sleeping 或 Uninterruptible Sleep（相关虚拟机与内存背景可参考 <a href="/2021/12/25/2021-07-15-%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3Java%E5%92%8CAndroid%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86%EF%BC%88%E4%B8%80%EF%BC%89%EF%BC%9A%E8%99%9A%E6%8B%9F%E6%9C%BA/" title="Android 内存与虚拟机基础">Android 内存与虚拟机基础</a>），处理方式完全不同。</p>
+<p><code>perfetto-trace-analysis</code> Skill 要求查询可疑时间窗内的 <code>thread_state</code>。如果线程在等待，还要继续检查 Binder、锁或 I&#x2F;O 依赖，不能停在调用方。一个合格的任务描述应提供 Perfetto trace 文件、目标包名、问题时间范围和用户可感知现象，并要求每条结论附 SQL 或指标结果。</p>
+<p>Agent 最终应该交付一条证据路径，例如：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">掉帧区间 -&gt; 主线程 slice -&gt; thread_state=Sleeping</span><br><span class="line">-&gt; Binder transaction -&gt; system_server 对应线程</span><br><span class="line">-&gt; 锁等待或 I/O slice -&gt; 根因与影响范围</span><br></pre></td></tr></table></figure>
+
+<p>如果只得到「主线程某函数耗时 45 ms」，分析还没有完成。</p>
+<h2 id="提示词要写验收条件，不要复述技能正文"><a href="#提示词要写验收条件，不要复述技能正文" class="headerlink" title="提示词要写验收条件，不要复述技能正文"></a>提示词要写验收条件，不要复述技能正文</h2><p>安装 Skill 之后，无需把 <code>SKILL.md</code> 全文粘进提示词。提示词应该补充技能无法预先知道的项目上下文：</p>
+<ul>
+<li>目标：要修复哪个用户问题，或者要回答哪个技术问题。</li>
+<li>范围：允许修改哪些模块、文件和构建配置，哪些内容禁止改动。</li>
+<li>环境：目标 API、设备序列号、构建变体、入口 Activity、trace 路径。</li>
+<li>证据：必须运行哪些测试、输出哪些报告、保存哪些截图或布局树。</li>
+<li>停止条件：什么情况下需要先报告风险，例如依赖升级、数据迁移、公开 API 变更。</li>
+</ul>
+<p>「帮忙适配 edge-to-edge」只给了主题。「修复登录页在 Android 15 上被 IME 遮挡，限制修改登录模块，部署到指定模拟器，并提供键盘开关两种状态的布局树与截图」才给出了任务。</p>
+<h2 id="使用时需要守住的六条边界"><a href="#使用时需要守住的六条边界" class="headerlink" title="使用时需要守住的六条边界"></a>使用时需要守住的六条边界</h2><h3 id="1-每次先确认-CLI-版本和-help"><a href="#1-每次先确认-CLI-版本和-help" class="headerlink" title="1. 每次先确认 CLI 版本和 help"></a>1. 每次先确认 CLI 版本和 <code>help</code></h3><p>Android CLI 与 Skills 仍在更新。本文核验时，官方 README、开发者文档和本机 <code>--help</code> 已经出现过参数写法差异。脚本中可以固定已验证版本；交互式使用时先查本机 help。</p>
+<h3 id="2-Skill-是操作规程，不是正确性证明"><a href="#2-Skill-是操作规程，不是正确性证明" class="headerlink" title="2. Skill 是操作规程，不是正确性证明"></a>2. Skill 是操作规程，不是正确性证明</h3><p>Skill 可以改善 Agent 的步骤和判断依据，但不会消除模型错误。官方仓库 README 也明确要求复查结果。代码仍需经过编译、测试、Lint、设备或 trace 证据验证（Lint 与 Build 配置可参考 <a href="/2016/05/10/2016-05-10-Android%20Gradle%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E7%B3%BB%E5%88%979/" title="Gradle 高级配置与 Lint 忽略">Gradle 高级配置与 Lint 忽略</a>）。</p>
+<h3 id="3-一个任务只设一个主技能"><a href="#3-一个任务只设一个主技能" class="headerlink" title="3. 一个任务只设一个主技能"></a>3. 一个任务只设一个主技能</h3><p>主技能负责决定工作流，其他技能只补充局部能力。例如 edge-to-edge 改造以 <code>edge-to-edge</code> 为主，<code>testing-setup</code> 只在项目缺少对应测试基础设施时介入。多个技能同时给出不同的修改顺序和输出约束时，应先拆分任务。</p>
+<h3 id="4-官方技能与团队技能分开维护"><a href="#4-官方技能与团队技能分开维护" class="headerlink" title="4. 官方技能与团队技能分开维护"></a>4. 官方技能与团队技能分开维护</h3><p>官方技能通过 <code>android skills add</code> 更新，团队技能记录内部架构、构建命令、测试设备和发布门禁。二者目录和名称分开，可以避免升级覆盖，也便于追踪规则来源。</p>
+<h3 id="5-高风险修改采用「分析」和「执行」两阶段"><a href="#5-高风险修改采用「分析」和「执行」两阶段" class="headerlink" title="5. 高风险修改采用「分析」和「执行」两阶段"></a>5. 高风险修改采用「分析」和「执行」两阶段</h3><p>依赖升级、R8 规则删除、数据库迁移、Manifest 导出组件修改先生成分析报告，再开独立任务执行。这样可以让代码评审聚焦于已经确认的变更范围，也能减少 Agent 一边调查一边扩大修改面的情况。</p>
+<h3 id="6-把产物纳入评审"><a href="#6-把产物纳入评审" class="headerlink" title="6. 把产物纳入评审"></a>6. 把产物纳入评审</h3><p>除代码 diff 外，UI 任务提交截图和布局树，性能任务提交 trace 查询与时间窗，构建任务提交 APK&#x2F;Bundle 信息，迁移任务提交测试和兼容性清单。可复查的产物越具体，越容易发现 Agent 的判断偏差。</p>
+<h2 id="团队接入建议"><a href="#团队接入建议" class="headerlink" title="团队接入建议"></a>团队接入建议</h2><p>小范围试用时，可以先选一个边界明确、容易验收的任务，例如 edge-to-edge、R8 规则分析或测试基础设施盘点。不要从大型架构迁移开始。</p>
+<p>项目中建议维护以下内容：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">project/</span><br><span class="line">├── AGENTS.md                    # 项目构建、测试、目录和禁止项</span><br><span class="line">├── skills/                      # 示例；实际目录由 CLI 与 Agent 约定决定</span><br><span class="line">│   ├── edge-to-edge/</span><br><span class="line">│   │   └── SKILL.md</span><br><span class="line">│   └── team-release-check/</span><br><span class="line">│       ├── SKILL.md</span><br><span class="line">│       ├── references/</span><br><span class="line">│       └── scripts/</span><br><span class="line">└── artifacts/                   # 本地或 CI 生成，不一定提交仓库</span><br><span class="line">    ├── layout/</span><br><span class="line">    ├── screenshots/</span><br><span class="line">    └── reports/</span><br></pre></td></tr></table></figure>
+
+<p><code>AGENTS.md</code> 写项目级稳定规则，Skill 写某类任务的执行步骤。两者不要重复整段内容。团队自己的 Skill 还应带最小可运行脚本和输出模板，让 Agent 在不同工具中得到相近结果。</p>
+<p>接入效果可以用四个指标观察：首次执行成功率、人工返工次数、无证据结论数量、从任务开始到得到可复查产物的时间。只统计生成了多少代码，无法判断工具是否改善了工程过程。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>Android CLI 提供环境、文档、工程、设备、界面和 Android Studio 的执行入口；Android Skills 提供具体 Android 任务的步骤、约束和参考资料。CLI 让 Agent 能做事，Skills 让它按经过整理的流程做事。</p>
+<p>稳定的用法可以压缩为一句话：按任务安装少量 Skill，用 Android CLI 获取环境和运行证据，在提示词里写清范围与验收条件，最终以编译、测试、布局、截图或 trace 结果判断任务是否完成。</p>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li><a target="_blank" rel="noopener" href="https://developer.android.com/tools/agents/android-cli">Android CLI 官方文档</a></li>
+<li><a target="_blank" rel="noopener" href="https://developer.android.com/tools/agents/android-skills">Android Skills 官方文档</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/android/skills">android&#x2F;skills GitHub 仓库</a></li>
+<li><a target="_blank" rel="noopener" href="https://agentskills.io/specification">Agent Skills 开放规范</a></li>
+</ul>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/08/11/2026-08-11-android-cli-android-skills-best-practice/" title="Android CLI 与 Android Skills 最佳实践：把 AI Agent 接入可验证的 Android 开发流程">https://blog.shuying.me/2026/08/11/2026-08-11-android-cli-android-skills-best-practice/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/Android-CLI/" rel="tag"># Android CLI</a>
+              <a href="/tags/Android-Skills/" rel="tag"># Android Skills</a>
+              <a href="/tags/AI-Agent/" rel="tag"># AI Agent</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2021/12/25/2020-03-06-Android%20Coroutine%E5%BC%80%E5%8F%91%E5%AE%9E%E8%B7%B5/" rel="prev" title="Android Coroutine开发实践">
+      <i class="fa fa-chevron-left"></i> Android Coroutine开发实践
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/08/18/2023-02-20-Android%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95%E5%AE%9E%E8%B7%B5/" rel="next" title="Android单元测试实践">
+      Android单元测试实践 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Android-CLI-%E8%A7%A3%E5%86%B3%E7%9A%84%E6%98%AF%E6%89%A7%E8%A1%8C%E9%97%AE%E9%A2%98"><span class="nav-number">1.</span> <span class="nav-text">Android CLI 解决的是执行问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%89%E8%A3%85%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-number">1.1.</span> <span class="nav-text">安装与初始化</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%94%A8-docs-%E6%9F%A5%E8%AF%A2%E5%AE%98%E6%96%B9%E8%B5%84%E6%96%99"><span class="nav-number">1.2.</span> <span class="nav-text">用 docs 查询官方资料</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%94%A8-describe-%E6%B6%88%E9%99%A4%E5%B7%A5%E7%A8%8B%E7%BB%93%E6%9E%84%E7%8C%9C%E6%B5%8B"><span class="nav-number">1.3.</span> <span class="nav-text">用 describe 消除工程结构猜测</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%B8%83%E5%B1%80%E6%A0%91%E4%B8%8E%E6%88%AA%E5%9B%BE%E8%A6%81%E9%85%8D%E5%90%88%E4%BD%BF%E7%94%A8"><span class="nav-number">1.4.</span> <span class="nav-text">布局树与截图要配合使用</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#studio-%E5%91%BD%E4%BB%A4%E6%8A%8A-IDE-%E8%83%BD%E5%8A%9B%E5%BC%80%E6%94%BE%E7%BB%99-Agent"><span class="nav-number">1.5.</span> <span class="nav-text">studio 命令把 IDE 能力开放给 Agent</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Android-Skills-%E8%A7%A3%E5%86%B3%E7%9A%84%E6%98%AF%E5%B7%A5%E4%BD%9C%E6%B5%81%E9%97%AE%E9%A2%98"><span class="nav-number">2.</span> <span class="nav-text">Android Skills 解决的是工作流问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%BD%93%E5%89%8D%E6%8A%80%E8%83%BD%E8%A6%86%E7%9B%96%E4%BA%86%E5%93%AA%E4%BA%9B%E4%BB%BB%E5%8A%A1"><span class="nav-number">2.1.</span> <span class="nav-text">当前技能覆盖了哪些任务</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%89%E8%A3%85-Skills%EF%BC%9A%E5%85%88%E6%8C%89%E9%A1%B9%E7%9B%AE%EF%BC%8C%E5%86%8D%E6%8C%89%E4%BB%BB%E5%8A%A1"><span class="nav-number">3.</span> <span class="nav-text">安装 Skills：先按项目，再按任务</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E6%9D%A1%E5%8F%AF%E5%A4%8D%E7%94%A8%E7%9A%84-Agent-%E5%B7%A5%E4%BD%9C%E6%B5%81"><span class="nav-number">4.</span> <span class="nav-text">一条可复用的 Agent 工作流</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A4%BA%E4%BE%8B%EF%BC%9A%E4%BF%AE%E5%A4%8D-Compose-%E9%A1%B5%E9%9D%A2-edge-to-edge-%E9%97%AE%E9%A2%98"><span class="nav-number">4.1.</span> <span class="nav-text">示例：修复 Compose 页面 edge-to-edge 问题</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A4%BA%E4%BE%8B%EF%BC%9A%E5%88%86%E6%9E%90-R8-%E8%A7%84%E5%88%99%E6%97%B6%E4%B8%8D%E8%A6%81%E6%8E%88%E6%9D%83%E8%87%AA%E5%8A%A8%E5%88%A0%E9%99%A4"><span class="nav-number">4.2.</span> <span class="nav-text">示例：分析 R8 规则时不要授权自动删除</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A4%BA%E4%BE%8B%EF%BC%9APerfetto-%E5%88%86%E6%9E%90%E5%BF%85%E9%A1%BB%E6%B2%BF%E7%AD%89%E5%BE%85%E5%85%B3%E7%B3%BB%E7%BB%A7%E7%BB%AD%E6%9F%A5"><span class="nav-number">4.3.</span> <span class="nav-text">示例：Perfetto 分析必须沿等待关系继续查</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8F%90%E7%A4%BA%E8%AF%8D%E8%A6%81%E5%86%99%E9%AA%8C%E6%94%B6%E6%9D%A1%E4%BB%B6%EF%BC%8C%E4%B8%8D%E8%A6%81%E5%A4%8D%E8%BF%B0%E6%8A%80%E8%83%BD%E6%AD%A3%E6%96%87"><span class="nav-number">5.</span> <span class="nav-text">提示词要写验收条件，不要复述技能正文</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BD%BF%E7%94%A8%E6%97%B6%E9%9C%80%E8%A6%81%E5%AE%88%E4%BD%8F%E7%9A%84%E5%85%AD%E6%9D%A1%E8%BE%B9%E7%95%8C"><span class="nav-number">6.</span> <span class="nav-text">使用时需要守住的六条边界</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-%E6%AF%8F%E6%AC%A1%E5%85%88%E7%A1%AE%E8%AE%A4-CLI-%E7%89%88%E6%9C%AC%E5%92%8C-help"><span class="nav-number">6.1.</span> <span class="nav-text">1. 每次先确认 CLI 版本和 help</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-Skill-%E6%98%AF%E6%93%8D%E4%BD%9C%E8%A7%84%E7%A8%8B%EF%BC%8C%E4%B8%8D%E6%98%AF%E6%AD%A3%E7%A1%AE%E6%80%A7%E8%AF%81%E6%98%8E"><span class="nav-number">6.2.</span> <span class="nav-text">2. Skill 是操作规程，不是正确性证明</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-%E4%B8%80%E4%B8%AA%E4%BB%BB%E5%8A%A1%E5%8F%AA%E8%AE%BE%E4%B8%80%E4%B8%AA%E4%B8%BB%E6%8A%80%E8%83%BD"><span class="nav-number">6.3.</span> <span class="nav-text">3. 一个任务只设一个主技能</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-%E5%AE%98%E6%96%B9%E6%8A%80%E8%83%BD%E4%B8%8E%E5%9B%A2%E9%98%9F%E6%8A%80%E8%83%BD%E5%88%86%E5%BC%80%E7%BB%B4%E6%8A%A4"><span class="nav-number">6.4.</span> <span class="nav-text">4. 官方技能与团队技能分开维护</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-%E9%AB%98%E9%A3%8E%E9%99%A9%E4%BF%AE%E6%94%B9%E9%87%87%E7%94%A8%E3%80%8C%E5%88%86%E6%9E%90%E3%80%8D%E5%92%8C%E3%80%8C%E6%89%A7%E8%A1%8C%E3%80%8D%E4%B8%A4%E9%98%B6%E6%AE%B5"><span class="nav-number">6.5.</span> <span class="nav-text">5. 高风险修改采用「分析」和「执行」两阶段</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-%E6%8A%8A%E4%BA%A7%E7%89%A9%E7%BA%B3%E5%85%A5%E8%AF%84%E5%AE%A1"><span class="nav-number">6.6.</span> <span class="nav-text">6. 把产物纳入评审</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%A2%E9%98%9F%E6%8E%A5%E5%85%A5%E5%BB%BA%E8%AE%AE"><span class="nav-number">7.</span> <span class="nav-text">团队接入建议</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">8.</span> <span class="nav-text">总结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-number">9.</span> <span class="nav-text">参考资料</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

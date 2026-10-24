@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="拆解 Shopify Helix 工作流：小检查点加四道门禁（行为测试、Gemini UI 评审、双对抗评审、工程师审批）驱动 300+ 屏 App 迁回原生，附 Shop 迁移实测数据与四点可迁移的工程启示。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Shopify Helix AI 工作流详解：检查点与质量门如何驱动 300+ 屏 App 迁回原生">
+<meta property="og:url" content="https://blog.shuying.me/2026/10/08/2026-10-08-shopify-helix-ai-workflow/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="拆解 Shopify Helix 工作流：小检查点加四道门禁（行为测试、Gemini UI 评审、双对抗评审、工程师审批）驱动 300+ 屏 App 迁回原生，附 Shop 迁移实测数据与四点可迁移的工程启示。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/shopify-helix-ai-workflow-cover.png">
+<meta property="article:published_time" content="2026-10-08T12:00:00.000Z">
+<meta property="article:modified_time" content="2026-10-07T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="AI Agent">
+<meta property="article:tag" content="代码评审">
+<meta property="article:tag" content="Shopify">
+<meta property="article:tag" content="Helix">
+<meta property="article:tag" content="React Native">
+<meta property="article:tag" content="移动开发">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/shopify-helix-ai-workflow-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/10/08/2026-10-08-shopify-helix-ai-workflow/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Shopify Helix AI 工作流详解：检查点与质量门如何驱动 300+ 屏 App 迁回原生 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/10/08/2026-10-08-shopify-helix-ai-workflow/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Shopify Helix AI 工作流详解：检查点与质量门如何驱动 300+ 屏 App 迁回原生
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-10-08 20:00:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-10-08T20:00:00+08:00">2026-10-08</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">拆解 Shopify Helix 工作流：小检查点加四道门禁（行为测试、Gemini UI 评审、双对抗评审、工程师审批）驱动 300+ 屏 App 迁回原生，附 Shop 迁移实测数据与四点可迁移的工程启示。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/shopify-helix-ai-workflow-cover.png" itemprop="contentUrl">
+        </div>
+        <p>2020 年，Shopify 官宣全押 React Native；2025 年 1 月，官方博客还写着 RN 的未来一片光明（<a target="_blank" rel="noopener" href="https://shopify.engineering/five-years-of-react-native-at-shopify">Five Years of React Native at Shopify</a>）。到 2026 年 9 月，剧情反转：Shopify 宣布把旗下全部移动 App 迁回 Swift 与 Kotlin 原生，并首次公开了支撑这次决策的内部工具 <strong>Helix</strong>——一套让 LLM 承担大规模重写、同时保证代码”能发布”的工作流。迁移的来龙去脉见官方<a target="_blank" rel="noopener" href="https://shopify.engineering/back-to-native">《Native is now the future of mobile at Shopify》</a>；真正值得逐段拆的是 2026-09-21 发布的<a target="_blank" rel="noopener" href="https://shopify.engineering/helix">《Helix: The internal tool powering our Shopify app’s native migration》</a>（作者 Talha Naqvi）。</p>
+<p>Helix 最重要的主张只有一句话：<strong>不追求 LLM 第一次输出正确，只要求错的版本无法往前走</strong>。它把一个屏幕的迁移拆成小到一眼可审的检查点，用四道质量门逐个把关，再把每一条评审反馈写进记忆，让循环越跑越自主。本文基于 2026-10-08 核验的三篇 Shopify Engineering 官方文章（back-to-native、<a target="_blank" rel="noopener" href="https://shopify.engineering/shop-app-migration">shop-app-migration</a>、helix），先拆背景与机制，再看实测成绩单，最后给出我认为可以搬进自己工作流的四点启示。</p>
+<blockquote>
+<p><strong>核心要点</strong></p>
+<ul>
+<li>Helix 的核心不是更强的模型，而是一个收敛循环：把屏幕拆成小检查点逐个构建，每个检查点必须通过行为测试、UI 视觉评审、两轮上下文隔离的对抗评审与工程师审批，才能 commit 进入下一个。</li>
+<li>评审是门禁不是建议：任何一道门失败都可以无限重试，但 agent 无权以”我觉得够好了”跳过；工程师的反馈同时用于修复当前检查点与改进后续所有检查点。</li>
+<li>多模型按能力分工：编排器用 GPT，UI 评审用 Gemini——UI 等价性不靠规格说明也不靠像素 diff，靠”先渲染、再看见差异、再修复”的收敛过程逼近 1:1。</li>
+<li>实测成绩单来自 Shop App：AI 辅助下 12 周从概念验证到应用商店上架，冷启动 iOS 下降 23%、Android 下降 50%，崩溃会话率降至 1&#x2F;10（0.5% → 0.05%），Android 包体缩小 37.2%。</li>
+</ul>
+</blockquote>
+<h2 id="一、背景：为什么把-300-多个屏幕重写一遍"><a href="#一、背景：为什么把-300-多个屏幕重写一遍" class="headerlink" title="一、背景：为什么把 300 多个屏幕重写一遍"></a>一、背景：为什么把 300 多个屏幕重写一遍</h2><p>Shopify 从 2021 年就在用 LLM 辅助开发（比 ChatGPT 发布早一年），到 2025 年底，团队发现 agent 带来的变化不再是”写代码更快”，而是动摇了 2020 年那个 RN 决策的核心假设：**”构建两次”不再等于”双倍工作量”**。官方的验证方式很直接——agent 可以拿 iOS 版本当参考在 Android 上实现功能（反之亦然），可以帮工程师快速上手主栈之外的平台，还可以通过共享的规格、测试与评审检查点大幅压缩维持双端对齐的成本。React Native 的核心收益（写一次、两端跑）被 agent 稀释了，而原生贴近平台能力与第一方工具链的优势还在，天平于是反转。</p>
+<p>路径选择上，这次他们放弃了渐进式迁移（brownfield），选了推倒重建（greenfield）：原型验证显示借助 agent 的重建速度远超从前，而干净的地基可以让新 App 按最佳方式组织，不必背着旧约束走。Shop App 先行：一名工程师花一周与 coding agent 合作，把尽可能多的 RN 界面移植成 SwiftUI 原生界面（产物达不到可发布，但证明了逐功能对齐的迁移可行）；随后 6 人核心组搭起原生地基并实现主用户旅程，各特性团队中途加入补齐自己的领域。从概念验证到全原生 App 在应用商店上架，总共 <strong>12 周</strong>。</p>
+<p>真正的大头是 Shopify App——旗下最大 App，<strong>300 多个屏幕</strong>，外加桌面与锁屏小组件、Apple Watch 应用、表盘复杂功能和 Siri 快捷指令，迁移已在进行中，计划年内发布。官方明确排除了”直接把 LLM 指向 RN 仓库一次性翻译”这条路，back-to-native 原文说得很不客气（译文）：”即使你让它先尽可能收集信息、冻结成规格和任务文件再实现，最终得到的也是大量不可维护、无法发布的代码。”防止这种 AI 垃圾代码（slop）的答案，就是 Helix。</p>
+<h2 id="二、Helix-的循环：把”第一次就对”换成”必须收敛”"><a href="#二、Helix-的循环：把”第一次就对”换成”必须收敛”" class="headerlink" title="二、Helix 的循环：把”第一次就对”换成”必须收敛”"></a>二、Helix 的循环：把”第一次就对”换成”必须收敛”</h2><p>Helix 是什么？原文定义：<strong>一套工具与技能，帮助 LLM 从 React Native App 迁移特性与屏幕，同时遵循一套为新原生 App 专门设计、约束很强的架构</strong>。它与常见 one-shot 工具的区别，官方这段话说得很清楚：大多数工具尽可能收集信息，转成规格与任务文件，把整个功能实现出来，祈祷第一次结果就能用——工程师拿到一大坨代码，所有测试工作还都留给他。Helix 反着来：不期待第一次输出正确，把工作拆开，边走边从工程师身上学习，每答对一步就自动化更多，目标是把工程师加速到过去不可能的速度，同时保住质量。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" style="max-width:100%;height:auto;" role="img" aria-label="Helix 迁移循环全景：工程师指定屏幕，Helix 读取 RN 参考代码并拆解为检查点序列，工程师分钟级审批后逐个构建，每个检查点过四道质量门后 commit，门失败则修复重跑，工程师反馈写入记忆使后续检查点更少监督">
+  <title>Helix 迁移循环全景</title>
+  <desc>第一行：工程师指定屏幕（目标屏幕或子屏幕）→ Helix 读取 RN 参考代码（行为、状态、导航、埋点）→ 拆解为检查点序列（骨架、小区块、递增复杂度）→ 工程师分钟级审批（序列是否合理、一眼可判）。第二行：构建检查点 N（小上下文窗口、直接读参考代码）→ 四道质量门（行为、UI 评审、对抗评审×2、工程师）→ commit 后进入下一个检查点（工程师由此开分支、提 PR）。四道门失败则修复重跑，可无限重试、不可跳过；工程师反馈沉淀进反馈记忆，提升后续每个检查点，自主性递增，可整夜自主运行。</desc>
+  <!-- Row 1 -->
+  <rect x="26" y="64" width="164" height="68" rx="10" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"/>
+  <text x="108" y="92" font-family="sans-serif" font-size="13" fill="#38bdf8" text-anchor="middle" font-weight="bold">工程师指定屏幕</text>
+  <text x="108" y="114" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">目标屏幕或子屏幕</text>
+  <line x1="190" y1="98" x2="210" y2="98" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="210,94 218,98 210,102" fill="#6b7280"/>
+  <rect x="218" y="64" width="196" height="68" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="316" y="92" font-family="sans-serif" font-size="13" fill="#a78bfa" text-anchor="middle" font-weight="bold">Helix 读取 RN 参考代码</text>
+  <text x="316" y="114" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">行为 · 状态 · 导航 · 埋点</text>
+  <line x1="414" y1="98" x2="434" y2="98" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="434,94 442,98 434,102" fill="#6b7280"/>
+  <rect x="442" y="64" width="176" height="68" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="530" y="92" font-family="sans-serif" font-size="13" fill="#a78bfa" text-anchor="middle" font-weight="bold">拆解为检查点序列</text>
+  <text x="530" y="114" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">骨架 → 小区块 → 递增复杂度</text>
+  <line x1="618" y1="98" x2="638" y2="98" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="638,94 646,98 638,102" fill="#6b7280"/>
+  <rect x="646" y="64" width="188" height="68" rx="10" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"/>
+  <text x="740" y="92" font-family="sans-serif" font-size="13" fill="#f59e0b" text-anchor="middle" font-weight="bold">工程师分钟级审批</text>
+  <text x="740" y="114" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">只看序列是否合理 · 一眼可判</text>
+  <!-- 连接 Row1 到 Row2 -->
+  <polyline points="740,132 740,170 111,170 111,204" fill="none" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="107,204 111,212 115,204" fill="#6b7280"/>
+  <text x="426" y="162" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">批准后逐个构建</text>
+  <!-- Row 2 -->
+  <rect x="26" y="208" width="170" height="68" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="111" y="236" font-family="sans-serif" font-size="13" fill="#a78bfa" text-anchor="middle" font-weight="bold">构建检查点 N</text>
+  <text x="111" y="258" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">小上下文窗口 · 直接读参考代码</text>
+  <line x1="196" y1="242" x2="216" y2="242" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="216,238 224,242 216,246" fill="#6b7280"/>
+  <rect x="224" y="208" width="242" height="68" rx="10" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"/>
+  <text x="345" y="236" font-family="sans-serif" font-size="13" fill="#f59e0b" text-anchor="middle" font-weight="bold">四道质量门（详见下节）</text>
+  <text x="345" y="258" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">行为 → UI 评审 → 对抗评审×2 → 工程师</text>
+  <line x1="466" y1="242" x2="486" y2="242" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="486,238 494,242 486,246" fill="#6b7280"/>
+  <rect x="494" y="208" width="340" height="68" rx="10" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"/>
+  <text x="664" y="236" font-family="sans-serif" font-size="13" fill="#22c55e" text-anchor="middle" font-weight="bold">commit → 进入下一个检查点</text>
+  <text x="664" y="258" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">工程师由此开分支、提 PR</text>
+  <!-- 重试回路 -->
+  <polyline points="345,276 345,308 111,308 111,282" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 4"/>
+  <polygon points="107,282 111,274 115,282" fill="#ef4444"/>
+  <text x="228" y="326" font-family="sans-serif" font-size="10.5" fill="#ef4444" text-anchor="middle">门失败 → 修复 → 重跑（可无限重试，不可跳过）</text>
+  <!-- 反馈记忆 -->
+  <line x1="664" y1="276" x2="664" y2="336" stroke="#a78bfa" stroke-width="2" stroke-dasharray="6 4"/>
+  <polygon points="660,336 664,344 668,336" fill="#a78bfa"/>
+  <text x="674" y="312" font-family="sans-serif" font-size="10" fill="#a78bfa" text-anchor="start">反馈沉淀</text>
+  <rect x="494" y="344" width="340" height="58" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="1.8" stroke-dasharray="7 4"/>
+  <text x="664" y="368" font-family="sans-serif" font-size="12.5" fill="#a78bfa" text-anchor="middle" font-weight="bold">反馈记忆</text>
+  <text x="664" y="388" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">评审反馈逐条沉淀，改进后续每个检查点</text>
+  <polyline points="494,384 80,384 80,282" fill="none" stroke="#a78bfa" stroke-width="2" stroke-dasharray="6 4"/>
+  <polygon points="76,282 80,274 84,282" fill="#a78bfa"/>
+  <text x="287" y="375" font-family="sans-serif" font-size="10" fill="#a78bfa" text-anchor="middle">自主性递增：后续检查点更少监督</text>
+  <!-- 底注 -->
+  <text x="430" y="440" font-family="sans-serif" font-size="11.5" fill="#6b7280" text-anchor="middle">两大支柱：检查点小到一眼可审 · 门禁严到未证明不能过｜参考实现本身就是规格（The reference is the spec）</text>
+</svg>
+<figcaption>Figure 1. Helix 迁移循环全景。作者根据 Shopify Engineering《Helix》(2026-09-21) 原文重绘。</figcaption>
+</figure>
+
+<p>支撑这个循环的是两个刻意的设计决策，都在”把人的注意力当稀缺资源”这个前提下。</p>
+<p><strong>第一，检查点小到一眼可审。</strong>迁移从现有 RN 代码和正在运行的 App 出发，工程师选定目标（整个屏幕或单个子屏幕），Helix 把它切成复杂度递增的检查点：第一个通常是屏幕骨架，第二个是一个刻意挑得很小的区块，后面的检查点只在前面的决策通过评审后才变大。每个检查点的描述只有几个词——这是故意的。原文的逻辑值得整段记住（译文）：”在这个阶段，工程师只需要判断<strong>序列</strong>是否合理。没人能有效评审一堵由生成文本砌成的墙。我们宁可给对方一个能做的决定，而不是十页会被略读的文字。”</p>
+<p>小检查点还有第二个作用：塞得进小上下文窗口，让 agent 直接去读参考代码里相关的部分，而不是靠一份巨大的规格文件或任务清单来”代表”代码——<strong>参考实现本身就是规格（The reference is the spec）</strong>。这在工程上是个反直觉但很划算的选择：与其花 token 维护一份注定过时的中间产物，不如让 agent 随用随读唯一可信的源头。另外，一个子代理会阅读参考代码，为每个检查点<strong>生成测试用例</strong>——按集成测试的粒度、从用户视角描述功能，并主动挖掘 happy path 之外的边界情况。这些用例稍后会成为第一道门的”通过标准”。</p>
+<p><strong>第二，门禁严到未证明不能过。</strong> 这是第三节的全部内容，这里先给循环的完整成绩对比：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>常见 one-shot 工具</th>
+<th>Helix</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>工作投入</td>
+<td>前期收集信息 + 一次性全量实现</td>
+<td>分散到每个检查点的迭代里</td>
+</tr>
+<tr>
+<td>工程师拿到的</td>
+<td>一个巨大且高度不确定的 diff</td>
+<td>一串已通过验证的小 commit</td>
+</tr>
+<tr>
+<td>反馈时机</td>
+<td>全部压在最后（评审时才发现问题）</td>
+<td>前移到最早有用的时点</td>
+</tr>
+<tr>
+<td>评审负担</td>
+<td>横跨行为、视觉、双平台、架构</td>
+<td>每次只看一个一眼可判的决定</td>
+</tr>
+<tr>
+<td>后续走向</td>
+<td>靠人补救</td>
+<td>反馈入记忆，循环越跑越自主</td>
+</tr>
+</tbody></table>
+<h2 id="三、四道质量门：评审是门禁，不是建议"><a href="#三、四道质量门：评审是门禁，不是建议" class="headerlink" title="三、四道质量门：评审是门禁，不是建议"></a>三、四道质量门：评审是门禁，不是建议</h2><p>Helix 为每个检查点规定了四道按序执行的门。任何一道失败，agent 拿着反馈修复实现、重跑检查；可以无限次重试，但<strong>无权以”结果够好了”为由跳过失败的检查</strong>。”Reviews are gates instead of advice”（评审是门禁，不是建议）这个小节标题，是全文我最喜欢的一句。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 480" style="max-width:100%;height:auto;" role="img" aria-label="Helix 四道质量门：Gate 1 行为测试、Gate 2 UI 评审、Gate 3 对抗评审×2、Gate 4 工程师收口，任一门失败修复后重跑，附 INVALID 状态对齐机制与评审范围随检查点增长的说明">
+  <title>Helix 四道质量门</title>
+  <desc>四个按序执行的门：Gate 1 行为——CLI 暴露同款屏幕状态与动作，无需模拟器毫秒级迭代，截图前可迭代数十次，测试用例定义 proven；Gate 2 UI 评审——GPT 编排器捕获同状态截图对，Gemini 扮演完美主义设计评审员，逐条差异附严重度与位置，代码可修的视觉差异默认 blocker；Gate 3 对抗评审×2——两个上下文隔离的评审代理对照文档化架构逐条审查，每个发现必须修复，双评审都批准才放行；Gate 4 工程师收口——看代码与运行结果做判断，反馈进入修复与记忆两个通道，检查点以 commit 收尾。任一门失败则修复重跑，可无限重试不可绕过。</desc>
+  <!-- Gate 1 -->
+  <rect x="26" y="96" width="184" height="224" rx="10" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"/>
+  <text x="118" y="126" font-family="sans-serif" font-size="13.5" fill="#38bdf8" text-anchor="middle" font-weight="bold">Gate 1 · 行为</text>
+  <line x1="40" y1="140" x2="196" y2="140" stroke="#374151" stroke-width="1"/>
+  <text x="118" y="166" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">CLI 暴露同款屏幕状态与动作</text>
+  <text x="118" y="188" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">无需模拟器，毫秒级迭代</text>
+  <text x="118" y="210" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">截图前可迭代数十次</text>
+  <text x="118" y="232" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">测试用例定义"proven"</text>
+  <!-- Gate 2 -->
+  <rect x="234" y="96" width="184" height="224" rx="10" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"/>
+  <text x="326" y="126" font-family="sans-serif" font-size="13.5" fill="#f59e0b" text-anchor="middle" font-weight="bold">Gate 2 · UI 评审</text>
+  <line x1="248" y1="140" x2="404" y2="140" stroke="#374151" stroke-width="1"/>
+  <text x="326" y="166" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">GPT 编排器捕获同状态截图对</text>
+  <text x="326" y="188" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">Gemini 扮演完美主义设计评审</text>
+  <text x="326" y="210" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">逐条差异附严重度与屏幕位置</text>
+  <text x="326" y="232" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">代码可修的视觉差异默认 blocker</text>
+  <!-- Gate 3 -->
+  <rect x="442" y="96" width="184" height="224" rx="10" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="534" y="126" font-family="sans-serif" font-size="13.5" fill="#a78bfa" text-anchor="middle" font-weight="bold">Gate 3 · 对抗评审 ×2</text>
+  <line x1="456" y1="140" x2="612" y2="140" stroke="#374151" stroke-width="1"/>
+  <text x="534" y="166" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">两个上下文隔离的评审代理</text>
+  <text x="534" y="188" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">对照文档化架构逐条审查</text>
+  <text x="534" y="210" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">每个发现必须修复</text>
+  <text x="534" y="232" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">双评审都批准才放行</text>
+  <!-- Gate 4 -->
+  <rect x="650" y="96" width="184" height="224" rx="10" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"/>
+  <text x="742" y="126" font-family="sans-serif" font-size="13.5" fill="#22c55e" text-anchor="middle" font-weight="bold">Gate 4 · 工程师收口</text>
+  <line x1="664" y1="140" x2="820" y2="140" stroke="#374151" stroke-width="1"/>
+  <text x="742" y="166" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">看代码与运行结果做判断</text>
+  <text x="742" y="188" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">反馈 → 修复并重跑门禁</text>
+  <text x="742" y="210" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">反馈 → 写入记忆提升后续</text>
+  <text x="742" y="232" font-family="sans-serif" font-size="10.5" fill="#d1d5db" text-anchor="middle">检查点以 commit 收尾</text>
+  <!-- 流程箭头 -->
+  <line x1="212" y1="210" x2="228" y2="210" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="228,205 234,210 228,215" fill="#6b7280"/>
+  <line x1="420" y1="210" x2="436" y2="210" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="436,205 442,210 436,215" fill="#6b7280"/>
+  <line x1="628" y1="210" x2="644" y2="210" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="644,205 650,210 644,215" fill="#6b7280"/>
+  <!-- 重试回路 -->
+  <polyline points="742,324 742,352 118,352 118,326" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 4"/>
+  <line x1="326" y1="324" x2="326" y2="352" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 4"/>
+  <line x1="534" y1="324" x2="534" y2="352" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 4"/>
+  <polygon points="114,326 118,318 122,326" fill="#ef4444"/>
+  <text x="430" y="374" font-family="sans-serif" font-size="11" fill="#ef4444" text-anchor="middle">任一门失败：修复 → 重跑该门（可无限重试，不可绕过）</text>
+  <!-- 底部注释 -->
+  <rect x="26" y="396" width="808" height="62" rx="10" fill="#111827" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="8 5"/>
+  <text x="430" y="420" font-family="sans-serif" font-size="11" fill="#e5e7eb" text-anchor="middle" font-weight="bold">两条配套机制</text>
+  <text x="430" y="442" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">INVALID 机制：截图状态不齐（如未履行 vs 已履行订单）→ Gemini 标记，编排器重捕同状态再比｜评审范围随检查点增长：骨架期只查导航栏与标题</text>
+</svg>
+<figcaption>Figure 2. Helix 四道质量门</figcaption>
+</figure>
+
+<h3 id="Gate-1-行为：CLI-让-agent-在截一张图之前迭代几十次"><a href="#Gate-1-行为：CLI-让-agent-在截一张图之前迭代几十次" class="headerlink" title="Gate 1 行为：CLI 让 agent 在截一张图之前迭代几十次"></a>Gate 1 行为：CLI 让 agent 在截一张图之前迭代几十次</h3><p>Helix 的 CLI 暴露与 App 完全相同的屏幕状态与动作——比如首页会暴露分析数据与跳转到其他部分的动作。agent 分析参考 App 如何工作，复刻实现，然后通过 CLI 行为测试验证功能；检查点生成的那批测试用例在这里定义了什么叫”proven”，每一条相关用例都必须通过。关键在速度：CLI 不需要模拟器，这个循环非常快，agent 可以在截第一张图之前把行为迭代几十次。back-to-native 里交代了这个设计的来由——他们的架构原则是业务逻辑与 UI 彻底解耦、能在桌面 headless 运行，再通过 CLI 暴露给 agent。此前 agent 靠无障碍树或截图驱动模拟器，改代码只要几秒、验证一次却要几分钟，”模型再强也没用，如果它不能快速验证自己的工作”。</p>
+<h3 id="Gate-2-UI-评审：不指定视觉规格，让系统”看见”错误"><a href="#Gate-2-UI-评审：不指定视觉规格，让系统”看见”错误" class="headerlink" title="Gate 2 UI 评审：不指定视觉规格，让系统”看见”错误"></a>Gate 2 UI 评审：不指定视觉规格，让系统”看见”错误</h3><p>这是原文称之为”Helix 最有意思的部分、输出接近 1:1 的主要原因”的一道门。它解决的问题是：UI 等价性几乎无法规格化——人一眼就能看出标题太小、分隔线太深、图标差一点，但这些细节几乎从不出现在 prompt 里；像素 diff 也不可行，因为两套 UI 框架不会产出字节级相同的输出。</p>
+<p>Shopify 在教 agent 驱动模拟器时发现，当前 <strong>Gemini</strong> 模型对这类问题有很好的空间感知，能捕捉边距、留白这类 UI 细微差异并估计偏差，于是围绕它建了一道门：编排器（<strong>GPT</strong>）捕获实现与参考两张处于相同状态的截图，让 Gemini 扮演一个完美主义设计评审员，检查结构、间距、对齐；字号按截图尺寸的比例判断，所以文字过大过小也能被识别。Gemini 必须<strong>列出找到的每一处差异，各附严重度与屏幕位置</strong>；凡是能用代码修复的视觉差异，默认按 blocker 处理。</p>
+<p>两个配套机制保证了这道门不会误伤：一是 <strong>INVALID 标记</strong>——如果编排器送来的两张截图状态不一致（比如一张是未履行订单、一张是已履行订单），Gemini 会把本次比较标为 INVALID，编排器把两个 App 调到同一状态再比；二是<strong>范围随检查点增长</strong>——骨架期的检查点只要求对比导航栏和标题，因为参考 App 是完整屏幕而新 App 还什么都没有。这段设计的洞察我愿意原样搬用：第一次渲染不需要完美，系统”能看见”哪里错了、描述它、定位它、并要求再试一次——这比在动手实现之前把每个视觉细节都写进规格可靠得多。</p>
+<h3 id="Gate-3-对抗评审：代码好不好，两个”陌生人”说了算"><a href="#Gate-3-对抗评审：代码好不好，两个”陌生人”说了算" class="headerlink" title="Gate 3 对抗评审：代码好不好，两个”陌生人”说了算"></a>Gate 3 对抗评审：代码好不好，两个”陌生人”说了算</h3><p>行为对、看着像，代码本身仍可能很差，这道门就是为此存在的。前提是 Shopify 为新 App 设计了一套 agent 友好、且<strong>彻底文档化</strong>的架构——正是这份文档让对抗评审变得可执行。两个互相独立、上下文隔离的评审 agent 对照这份架构检查新代码（UI 代码有自己单独的指南），每个发现都必须修复；修复后受影响的测试重跑，如果可见的部分变了，UI 评审门也重跑；然后两位评审再看一遍改过的代码，循环直到<strong>两个评审都批准</strong>。上下文隔离是这道门的设计要点：评审者不与实现者共享上下文，减少”自己审自己”的偏袒，评审的依据是文档化的架构标准而不是评审者的感觉。</p>
+<h3 id="Gate-4-工程师收口：反馈走两条路，一条修当下，一条喂未来"><a href="#Gate-4-工程师收口：反馈走两条路，一条修当下，一条喂未来" class="headerlink" title="Gate 4 工程师收口：反馈走两条路，一条修当下，一条喂未来"></a>Gate 4 工程师收口：反馈走两条路，一条修当下，一条喂未来</h3><p>最后由工程师看代码和运行中的 App，判断结果是否符合预期。他的反馈去两个地方：agent 修复问题并重跑门禁；Helix 把反馈记入记忆，用来改进<strong>之后每一个</strong>检查点。这个记忆让自主性随迁移推进而增长：早期检查点获得更多工程师关注（不确定性高，已积累的已批准工作少），随着批准的代码与反馈累积，后面的检查点可以少一些监督，工程师也可以选择自主模式，让某些检查点直接跳过审批。每个检查点都以一次 commit 结束，大多数工程师从这里开分支、提 PR。</p>
+<p>到这里，一个检查点到达工程师手里时已经状态良好：UI 与参考几乎 1:1，代码遵循指南，行为被测试证明——这是循环强制出来的，不是模型自觉。对工程师的价值在于：one-shot 工具把所有工作压到最后，一个人评审一个横跨产品行为、视觉保真、双平台与架构的巨大 diff；Helix 把反馈移到最早有用的时点，重复实现、跑检查、回应评审者这些活儿交给 agent，工程师专注范围、产品判断和品味。</p>
+<h2 id="四、自主运行，以及迁移之外的通用性"><a href="#四、自主运行，以及迁移之外的通用性" class="headerlink" title="四、自主运行，以及迁移之外的通用性"></a>四、自主运行，以及迁移之外的通用性</h2><p>门禁架构让 Helix 可以安全地放手。默认工程师审批是强制的，但可以改变：要求它一口气完成接下来三个检查点，或者完全跳过审批，它能连续工作几个小时甚至整夜。而且<strong>没人在看的时候，门禁不会放松</strong>——每个检查点仍然要证明行为、通过 UI 评审、说服两位对抗评审，才能开始下一个。迁移还能并行：Helix 不限于一次一个屏幕，多个屏幕可以同时进行、各自通过自己的门收敛。自主运行结束后，工程师面对的不是一个巨大 diff，而是一串已提交的检查点，每个都带证据：存档的 UI 评审、通过的测试、评审结论。</p>
+<p>这个循环也不只服务迁移。官方明确说这个循环没有任何一步是迁移专属的：做新功能时，可以把设计稿和产品文档当参考走同样的流程；架构迁移和重构用同样的检查点+门禁策略；纯逻辑改动跳过 UI 评审门即可。换句话说，Helix 贡献的是一个可复用的工程框架，迁移只是它的第一个应用场景。</p>
+<p>原文的收尾一句话值得当作这篇文章的题眼（译文）：”我们不再为完美的第一次尝试而优化，而是为可靠的收敛而工作。<strong>一次尝试允许出错；但在它不再出错之前，不允许发布。</strong>“（原文：”An attempt is allowed to be wrong. It is not allowed to ship until it isn’t.”）</p>
+<h2 id="五、成绩单：Shop-迁移的实测数据"><a href="#五、成绩单：Shop-迁移的实测数据" class="headerlink" title="五、成绩单：Shop 迁移的实测数据"></a>五、成绩单：Shop 迁移的实测数据</h2><p>需要先说明口径：Helix 本身目前没有公布量化指标，下一节的数据来自 Shop App 的 12 周迁移——它发生在 Helix 产品化之前（当时用的是 Pi coding agent 的扩展工作流加 Tardis 调试工具，可以视为同一套思路的前身），但足以验证”agent 辅助原生重写不牺牲质量”这条路线。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 430" style="max-width:100%;height:auto;" role="img" aria-label="Shop 迁移冷启动时间对比柱状图：iOS 冷启动从 React Native 的 3200ms 降到原生的 2466ms（-23%），Android 从 4433ms 降到 2233ms（-50%）">
+  <title>Shop 迁移冷启动时间对比</title>
+  <desc>iOS 冷启动 React Native 3200ms 对比原生 2466ms，下降 23%；Android 冷启动 React Native 4433ms 对比原生 2233ms，下降 50%。数据来源：Shopify Engineering《Migrating Shop app from React Native to native》(2026-09-10)。</desc>
+  <!-- 网格 -->
+  <line x1="90" y1="340" x2="760" y2="340" stroke="#4b5563" stroke-width="1.5"/>
+  <line x1="90" y1="246.7" x2="760" y2="246.7" stroke="#374151" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="90" y1="153.3" x2="760" y2="153.3" stroke="#374151" stroke-width="1" stroke-dasharray="4 4"/>
+  <line x1="90" y1="60" x2="760" y2="60" stroke="#374151" stroke-width="1" stroke-dasharray="4 4"/>
+  <text x="80" y="344" font-family="monospace" font-size="10" fill="#6b7280" text-anchor="end">0</text>
+  <text x="80" y="250" font-family="monospace" font-size="10" fill="#6b7280" text-anchor="end">1500</text>
+  <text x="80" y="157" font-family="monospace" font-size="10" fill="#6b7280" text-anchor="end">3000</text>
+  <text x="80" y="64" font-family="monospace" font-size="10" fill="#6b7280" text-anchor="end">4500</text>
+  <!-- iOS 组 -->
+  <rect x="140" y="26" width="170" height="34" rx="17" fill="#111827" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="225" y="48" font-family="sans-serif" font-size="13" fill="#f59e0b" text-anchor="middle" font-weight="bold">iOS 冷启动 −23%</text>
+  <rect x="170" y="140.9" width="90" height="199.1" fill="#4b5563"/>
+  <text x="215" y="134" font-family="monospace" font-size="10.5" fill="#9ca3af" text-anchor="middle">3200</text>
+  <rect x="280" y="186.6" width="90" height="153.4" fill="#38bdf8"/>
+  <text x="325" y="180" font-family="monospace" font-size="10.5" fill="#38bdf8" text-anchor="middle">2466</text>
+  <!-- Android 组 -->
+  <rect x="480" y="26" width="190" height="34" rx="17" fill="#111827" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="575" y="48" font-family="sans-serif" font-size="13" fill="#22c55e" text-anchor="middle" font-weight="bold">Android 冷启动 −50%</text>
+  <rect x="480" y="64.2" width="90" height="275.8" fill="#4b5563"/>
+  <text x="525" y="58" font-family="monospace" font-size="10.5" fill="#9ca3af" text-anchor="middle">4433</text>
+  <rect x="590" y="201.1" width="90" height="138.9" fill="#22c55e"/>
+  <text x="635" y="195" font-family="monospace" font-size="10.5" fill="#22c55e" text-anchor="middle">2233</text>
+  <!-- X 轴标签 -->
+  <text x="270" y="366" font-family="sans-serif" font-size="11.5" fill="#d1d5db" text-anchor="middle">iOS 冷启动（毫秒）</text>
+  <text x="580" y="366" font-family="sans-serif" font-size="11.5" fill="#d1d5db" text-anchor="middle">Android 冷启动（毫秒）</text>
+  <!-- 图例 -->
+  <rect x="290" y="396" width="14" height="14" fill="#4b5563"/>
+  <text x="312" y="408" font-family="sans-serif" font-size="11" fill="#9ca3af">React Native</text>
+  <rect x="425" y="396" width="14" height="14" fill="#38bdf8"/>
+  <text x="447" y="408" font-family="sans-serif" font-size="11" fill="#9ca3af">原生（SwiftUI / Jetpack Compose）</text>
+</svg>
+<figcaption>Figure 3. Shop 迁移冷启动时间对比。数据来源：Shopify Engineering《Migrating Shop app from React Native to native》(2026-09-10)。</figcaption>
+</figure>
+
+<p>完整成绩单如下（全部来自官方实测，iOS 冷启动为点击图标到首页信息流可见的时间）：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>React Native</th>
+<th>原生</th>
+<th>变化</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>iOS 冷启动</td>
+<td>3,200 ms</td>
+<td>2,466 ms</td>
+<td>−23%</td>
+</tr>
+<tr>
+<td>Android 冷启动</td>
+<td>4,433 ms</td>
+<td>2,233 ms</td>
+<td>−50%</td>
+</tr>
+<tr>
+<td>会话稳定性</td>
+<td>99.5%+</td>
+<td>99.95%+</td>
+<td>崩溃会话率降至 1&#x2F;10</td>
+</tr>
+<tr>
+<td>Android 包体</td>
+<td>293 MB</td>
+<td>184 MB</td>
+<td>−109 MB（−37.2%）</td>
+</tr>
+<tr>
+<td>iOS 包体</td>
+<td>67 MB</td>
+<td>68 MB</td>
+<td>+1 MB（+1.5%）</td>
+</tr>
+<tr>
+<td>Android 构建时长</td>
+<td>—</td>
+<td>—</td>
+<td>约降 75%</td>
+</tr>
+<tr>
+<td>Android 信息流滚动</td>
+<td>—</td>
+<td>120 FPS</td>
+<td>Pixel 实测，几乎未做优化</td>
+</tr>
+</tbody></table>
+<p>这份成绩单的另一面同样重要：迁移必须对用户无感——保持登录态、推送不中断、埋点事件与下游系统依赖的上下文原样保留，同时趁机下线了部分屏幕、简化了另一些。</p>
+<p>还有一段值得引用的诚实总结：原生专长依然重要，生成的代码可以满足功能需求，却仍可能引入重复代码、架构漂移或性能问题；仓库级指引、lint、测试、静态分析、性能检查与代码评审依然在岗。</p>
+<p>迁移期间的一个工作习惯变化值得留意：他们不再是一个人改代码、跑起来、迭代，而是<strong>在多个 worktree 里并行跑多个 agent 会话</strong>，给 agent 明确的任务、维护快速构建与测试循环、频繁评审变更。Shop 时代的 Pi 扩展里，子代理分工检阅 RN 源码、记录行为、准备平台方案、实现、评审 parity，而且<strong>计划接受与内容 hash 绑定</strong>——改了计划，前一次接受即失效。</p>
+<h2 id="六、工程判断：四点可迁移的启示"><a href="#六、工程判断：四点可迁移的启示" class="headerlink" title="六、工程判断：四点可迁移的启示"></a>六、工程判断：四点可迁移的启示</h2><p>Helix 不开源，官方说后续会继续分享 Helix 与 agent-addressable architecture 的细节。但拆完机制后，我认为有四件事不依赖 Helix 本身，任何团队的 agent 工作流都能复制：</p>
+<blockquote>
+<p><strong>我们的判断：</strong> Helix 真正的突破不在模型，而在把”质量标准”从评审意见变成了可执行的门禁程序——这件事在开源工具链上就能做，只是大多数团队还把 agent 当”生成器”而不是”被门禁约束的执行器”。</p>
+</blockquote>
+<p><strong>1. 反馈前移，门禁前移。</strong> 把质量标准写成”过不了就不能前进”的门，而不是写进评审意见里等人看。这和我拆解 SkillOpt 时的结论完全同构——那边是”验证门控让被拒编辑不伤分”，这边是”四道门让坏检查点不前进”（见<a href="https://blog.shuying.me/2026/09/21/2026-09-21-skillopt-code-review-skill/">《从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能》</a>）。两者的共同底层逻辑：对 agent 的信任不靠它自称多好，靠每一格的验证记录。</p>
+<p><strong>2. 为 agent 设计接口，而不只是为人。</strong> 业务逻辑 headless、CLI 毫秒级暴露状态与动作——agent 改代码以秒计，验证以分钟计的话，多强的模型都白搭。这是 Helix 第一道门能跑起来的物理基础，和我们在 <a href="https://blog.shuying.me/2026/08/11/2026-08-11-android-cli-android-skills-best-practice/">Android CLI 与 Android Skills 实践</a>里把设备操作收敛成可脚本化命令是同一个方向：接口先为可验证性服务，人机共用只是顺带的收益。</p>
+<p><strong>3. 视觉等价靠收敛，不靠规格。</strong> “先渲染、再看见差异、再修复”之所以比”把每个视觉细节写进 prompt”可靠，是因为视觉本质上是感知问题不是描述问题。Gemini 当评审员、字号按截图比例判断、差异必须附位置与严重度——这套做法可以直接搬进任何 UI 迁移或 UI 回归场景，替代那些永远维护不完的”视觉 checklist”。</p>
+<p><strong>4. 行为用测试证明，质量用对抗评审兜底。</strong> 测试用例在实现之前由独立子代理从参考代码生成（含 happy path 之外的边界），这让”proven”有了客观定义——这与<a href="https://blog.shuying.me/2026/09/05/2026-09-05-ai-unit-test-pyramid/">《AI 生成的单元测试：70&#x2F;20&#x2F;10 测试金字塔怎么落地》</a>里”先定可验证标准再谈生成”的结论互相印证。而上下文隔离的双评审，比单模型自评可靠得多：评审者不知道实现者的思路，只对照文档化架构说话。工具链选型上这同样成立，<a href="https://blog.shuying.me/2026/08/25/2026-08-25-codex-vs-deepseek-harness/">Codex 与 DeepSeek harness 的对比</a>里我们已经见过：harness 的评审与执行隔离能力，比模型榜单排名更影响产出质量。</p>
+<p>落到最小可行版本：小检查点（一眼可审）+ 确定性验证（测试或可执行的评审 rubric）+ 独立评审者（上下文隔离）+ 反馈记忆（会话摘要、AGENTS.md 或技能文件皆可）。四件事都不需要 Helix，但都要求把 agent 工作流当工程系统来设计，而不是当更快的打字员。</p>
+<h2 id="FAQ"><a href="#FAQ" class="headerlink" title="FAQ"></a>FAQ</h2><h3 id="Helix-开源了吗？现在能用上吗？"><a href="#Helix-开源了吗？现在能用上吗？" class="headerlink" title="Helix 开源了吗？现在能用上吗？"></a>Helix 开源了吗？现在能用上吗？</h3><p>没有。Helix 是 Shopify 内部工具，官方没有公布开源或商用计划，只承诺”继续分享学到的东西”。但它的循环四要素（小检查点、确定性验证、独立对抗评审、反馈记忆）不依赖任何专有工具，用 Claude Code、Codex 等通用 agent 加自定义技能与脚本即可仿造一个缩小版。</p>
+<h3 id="Helix-只能用于-React-Native-迁移吗？"><a href="#Helix-只能用于-React-Native-迁移吗？" class="headerlink" title="Helix 只能用于 React Native 迁移吗？"></a>Helix 只能用于 React Native 迁移吗？</h3><p>不是。官方明确说循环里没有任何一步是迁移专属的：新功能开发可以把设计稿与产品文档当参考走同样流程；架构迁移与重构用同样的检查点加门禁策略；纯逻辑改动跳过 UI 评审门即可。参考实现换成设计稿，循环照样成立。</p>
+<h3 id="为什么用-Gemini-做-UI-评审，而不是像素-diff-或写更详细的规格？"><a href="#为什么用-Gemini-做-UI-评审，而不是像素-diff-或写更详细的规格？" class="headerlink" title="为什么用 Gemini 做 UI 评审，而不是像素 diff 或写更详细的规格？"></a>为什么用 Gemini 做 UI 评审，而不是像素 diff 或写更详细的规格？</h3><p>两个原因。其一，UI 等价性几乎无法规格化：人一眼能发现的细节（标题偏小、图标差一点）几乎从不出现在 prompt 里，规格永远追不全。其二，像素 diff 不可行：两套 UI 框架不会产出字节级相同的输出，逐字节比较只会产生海量噪声。Shopify 实测发现当前 Gemini 模型对边距、对齐这类空间差异有很好的感知能力，能按截图尺寸比例估计字号偏差，于是让它逐条列出差异、附严重度与位置，代码可修的默认按 blocker 处理。</p>
+<h3 id="自主模式下没人盯着，质量会下降吗？"><a href="#自主模式下没人盯着，质量会下降吗？" class="headerlink" title="自主模式下没人盯着，质量会下降吗？"></a>自主模式下没人盯着，质量会下降吗？</h3><p>按官方描述不会，因为门禁不依赖”有人在看”：每个检查点仍必须通过行为测试、UI 评审与双对抗评审才能进入下一个，可无限重试但不可跳过。自主模式的差异只在最后一级——工程师审批可以整段跳过，而它交付的仍是一串带证据的 commit（存档的 UI 评审、通过的测试、评审结论），评审负担从”过程内”移到了”事后抽查”。</p>
+<h2 id="结语"><a href="#结语" class="headerlink" title="结语"></a>结语</h2><p>Helix 值得拆解，不是因为它有多神秘——检查点、测试、评审、commit，每个零件都不新鲜——而是因为它把零件组装成了一个<strong>不完美的尝试无法前进</strong>的系统，并公开了作业方式。对正在 AI 辅助开发里和”能跑但不能发”搏斗的团队，四件事的优先级高于换更强的模型：把大任务切成一眼可审的小检查点；让每一步都有可执行的通过标准；让评审独立于实现；把反馈沉淀下来喂给后续每一步。模型的能力曲线不受我们控制，但门禁的严格程度完全由我们自己决定。</p>
+<p>三篇原文：<a target="_blank" rel="noopener" href="https://shopify.engineering/helix">Helix</a>（2026-09-21，Talha Naqvi）、<a target="_blank" rel="noopener" href="https://shopify.engineering/back-to-native">Native is now the future of mobile at Shopify</a>（2026-09-10，Mustafa Ali）、<a target="_blank" rel="noopener" href="https://shopify.engineering/shop-app-migration">Migrating Shop app from React Native to native</a>（2026-09-10，Max Da Silva &#x2F; Jason Kim &#x2F; Quique Fagoaga）。关于”评审门禁”的算法侧版本，见<a href="https://blog.shuying.me/2026/09/21/2026-09-21-skillopt-code-review-skill/">上一篇：用 SkillOpt 优化一个代码评审技能</a>。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/10/08/2026-10-08-shopify-helix-ai-workflow/" title="Shopify Helix AI 工作流详解：检查点与质量门如何驱动 300+ 屏 App 迁回原生">https://blog.shuying.me/2026/10/08/2026-10-08-shopify-helix-ai-workflow/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/AI-Agent/" rel="tag"># AI Agent</a>
+              <a href="/tags/%E4%BB%A3%E7%A0%81%E8%AF%84%E5%AE%A1/" rel="tag"># 代码评审</a>
+              <a href="/tags/Shopify/" rel="tag"># Shopify</a>
+              <a href="/tags/Helix/" rel="tag"># Helix</a>
+              <a href="/tags/React-Native/" rel="tag"># React Native</a>
+              <a href="/tags/%E7%A7%BB%E5%8A%A8%E5%BC%80%E5%8F%91/" rel="tag"># 移动开发</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/09/22/2026-09-22-deep-learning-for-kids/" rel="prev" title="深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程">
+      <i class="fa fa-chevron-left"></i> 深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/10/24/gemma-3n-android-llm-tuning/" rel="next" title="端侧大模型实测：Gemma 3n 在 Android 上的性能、内存与功耗调优">
+      端侧大模型实测：Gemma 3n 在 Android 上的性能、内存与功耗调优 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E3%80%81%E8%83%8C%E6%99%AF%EF%BC%9A%E4%B8%BA%E4%BB%80%E4%B9%88%E6%8A%8A-300-%E5%A4%9A%E4%B8%AA%E5%B1%8F%E5%B9%95%E9%87%8D%E5%86%99%E4%B8%80%E9%81%8D"><span class="nav-number">1.</span> <span class="nav-text">一、背景：为什么把 300 多个屏幕重写一遍</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%8C%E3%80%81Helix-%E7%9A%84%E5%BE%AA%E7%8E%AF%EF%BC%9A%E6%8A%8A%E2%80%9D%E7%AC%AC%E4%B8%80%E6%AC%A1%E5%B0%B1%E5%AF%B9%E2%80%9D%E6%8D%A2%E6%88%90%E2%80%9D%E5%BF%85%E9%A1%BB%E6%94%B6%E6%95%9B%E2%80%9D"><span class="nav-number">2.</span> <span class="nav-text">二、Helix 的循环：把”第一次就对”换成”必须收敛”</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%89%E3%80%81%E5%9B%9B%E9%81%93%E8%B4%A8%E9%87%8F%E9%97%A8%EF%BC%9A%E8%AF%84%E5%AE%A1%E6%98%AF%E9%97%A8%E7%A6%81%EF%BC%8C%E4%B8%8D%E6%98%AF%E5%BB%BA%E8%AE%AE"><span class="nav-number">3.</span> <span class="nav-text">三、四道质量门：评审是门禁，不是建议</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Gate-1-%E8%A1%8C%E4%B8%BA%EF%BC%9ACLI-%E8%AE%A9-agent-%E5%9C%A8%E6%88%AA%E4%B8%80%E5%BC%A0%E5%9B%BE%E4%B9%8B%E5%89%8D%E8%BF%AD%E4%BB%A3%E5%87%A0%E5%8D%81%E6%AC%A1"><span class="nav-number">3.1.</span> <span class="nav-text">Gate 1 行为：CLI 让 agent 在截一张图之前迭代几十次</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Gate-2-UI-%E8%AF%84%E5%AE%A1%EF%BC%9A%E4%B8%8D%E6%8C%87%E5%AE%9A%E8%A7%86%E8%A7%89%E8%A7%84%E6%A0%BC%EF%BC%8C%E8%AE%A9%E7%B3%BB%E7%BB%9F%E2%80%9D%E7%9C%8B%E8%A7%81%E2%80%9D%E9%94%99%E8%AF%AF"><span class="nav-number">3.2.</span> <span class="nav-text">Gate 2 UI 评审：不指定视觉规格，让系统”看见”错误</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Gate-3-%E5%AF%B9%E6%8A%97%E8%AF%84%E5%AE%A1%EF%BC%9A%E4%BB%A3%E7%A0%81%E5%A5%BD%E4%B8%8D%E5%A5%BD%EF%BC%8C%E4%B8%A4%E4%B8%AA%E2%80%9D%E9%99%8C%E7%94%9F%E4%BA%BA%E2%80%9D%E8%AF%B4%E4%BA%86%E7%AE%97"><span class="nav-number">3.3.</span> <span class="nav-text">Gate 3 对抗评审：代码好不好，两个”陌生人”说了算</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Gate-4-%E5%B7%A5%E7%A8%8B%E5%B8%88%E6%94%B6%E5%8F%A3%EF%BC%9A%E5%8F%8D%E9%A6%88%E8%B5%B0%E4%B8%A4%E6%9D%A1%E8%B7%AF%EF%BC%8C%E4%B8%80%E6%9D%A1%E4%BF%AE%E5%BD%93%E4%B8%8B%EF%BC%8C%E4%B8%80%E6%9D%A1%E5%96%82%E6%9C%AA%E6%9D%A5"><span class="nav-number">3.4.</span> <span class="nav-text">Gate 4 工程师收口：反馈走两条路，一条修当下，一条喂未来</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9B%E3%80%81%E8%87%AA%E4%B8%BB%E8%BF%90%E8%A1%8C%EF%BC%8C%E4%BB%A5%E5%8F%8A%E8%BF%81%E7%A7%BB%E4%B9%8B%E5%A4%96%E7%9A%84%E9%80%9A%E7%94%A8%E6%80%A7"><span class="nav-number">4.</span> <span class="nav-text">四、自主运行，以及迁移之外的通用性</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%94%E3%80%81%E6%88%90%E7%BB%A9%E5%8D%95%EF%BC%9AShop-%E8%BF%81%E7%A7%BB%E7%9A%84%E5%AE%9E%E6%B5%8B%E6%95%B0%E6%8D%AE"><span class="nav-number">5.</span> <span class="nav-text">五、成绩单：Shop 迁移的实测数据</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD%E3%80%81%E5%B7%A5%E7%A8%8B%E5%88%A4%E6%96%AD%EF%BC%9A%E5%9B%9B%E7%82%B9%E5%8F%AF%E8%BF%81%E7%A7%BB%E7%9A%84%E5%90%AF%E7%A4%BA"><span class="nav-number">6.</span> <span class="nav-text">六、工程判断：四点可迁移的启示</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#FAQ"><span class="nav-number">7.</span> <span class="nav-text">FAQ</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Helix-%E5%BC%80%E6%BA%90%E4%BA%86%E5%90%97%EF%BC%9F%E7%8E%B0%E5%9C%A8%E8%83%BD%E7%94%A8%E4%B8%8A%E5%90%97%EF%BC%9F"><span class="nav-number">7.1.</span> <span class="nav-text">Helix 开源了吗？现在能用上吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Helix-%E5%8F%AA%E8%83%BD%E7%94%A8%E4%BA%8E-React-Native-%E8%BF%81%E7%A7%BB%E5%90%97%EF%BC%9F"><span class="nav-number">7.2.</span> <span class="nav-text">Helix 只能用于 React Native 迁移吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E7%94%A8-Gemini-%E5%81%9A-UI-%E8%AF%84%E5%AE%A1%EF%BC%8C%E8%80%8C%E4%B8%8D%E6%98%AF%E5%83%8F%E7%B4%A0-diff-%E6%88%96%E5%86%99%E6%9B%B4%E8%AF%A6%E7%BB%86%E7%9A%84%E8%A7%84%E6%A0%BC%EF%BC%9F"><span class="nav-number">7.3.</span> <span class="nav-text">为什么用 Gemini 做 UI 评审，而不是像素 diff 或写更详细的规格？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%87%AA%E4%B8%BB%E6%A8%A1%E5%BC%8F%E4%B8%8B%E6%B2%A1%E4%BA%BA%E7%9B%AF%E7%9D%80%EF%BC%8C%E8%B4%A8%E9%87%8F%E4%BC%9A%E4%B8%8B%E9%99%8D%E5%90%97%EF%BC%9F"><span class="nav-number">7.4.</span> <span class="nav-text">自主模式下没人盯着，质量会下降吗？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E8%AF%AD"><span class="nav-number">8.</span> <span class="nav-text">结语</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

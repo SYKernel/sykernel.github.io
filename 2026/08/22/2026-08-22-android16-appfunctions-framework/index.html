@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="深度解析 Android 16 AppFunctions 框架——移动端 MCP 的 Android 答案，从架构定位、核心 API、@AppFunction 注解机制到完整实现步骤与选型对比，附 Kotlin 代码示例。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="把 App 变成 AI 的智能体工具箱：Android 16 AppFunctions 框架详解">
+<meta property="og:url" content="https://blog.shuying.me/2026/08/22/2026-08-22-android16-appfunctions-framework/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="深度解析 Android 16 AppFunctions 框架——移动端 MCP 的 Android 答案，从架构定位、核心 API、@AppFunction 注解机制到完整实现步骤与选型对比，附 Kotlin 代码示例。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/android16-appfunctions-cover.png">
+<meta property="article:published_time" content="2026-08-22T08:00:00.000Z">
+<meta property="article:modified_time" content="2026-08-21T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="AI Agent">
+<meta property="article:tag" content="Android 16">
+<meta property="article:tag" content="AppFunctions">
+<meta property="article:tag" content="MCP">
+<meta property="article:tag" content="Jetpack">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/android16-appfunctions-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/08/22/2026-08-22-android16-appfunctions-framework/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>把 App 变成 AI 的智能体工具箱：Android 16 AppFunctions 框架详解 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/08/22/2026-08-22-android16-appfunctions-framework/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          把 App 变成 AI 的智能体工具箱：Android 16 AppFunctions 框架详解
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-08-22 16:00:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-08-22T16:00:00+08:00">2026-08-22</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">深度解析 Android 16 AppFunctions 框架——移动端 MCP 的 Android 答案，从架构定位、核心 API、@AppFunction 注解机制到完整实现步骤与选型对比，附 Kotlin 代码示例。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/android16-appfunctions-cover.png" itemprop="contentUrl">
+        </div>
+        <p>当一个 AI 助手想要帮用户”在待办应用里创建一条下午 5 点去公司取快递的提醒”时，传统做法是让助手模拟点击：打开应用、找到添加按钮、填入标题、设置时间、选择地点，然后祈祷 UI 没有改版。这条路径脆弱、缓慢，且无法保证结果。</p>
+<p>Android 16 引入的 AppFunctions 框架换了一个思路：**让 App 直接把 <code>createTask()</code> 这样的函数暴露成 AI 可调用的”工具”**，助手传结构化参数、拿结构化返回值，全程本地调用、零网络往返。Google 在官方文档中将其定位为”移动端的 MCP”——App 行为像一台设备端 MCP 服务器，向 Gemini 等 Agent 贡献可编排的工具。</p>
+<p>本文基于 2026 年 8 月的官方文档（最后更新 2026-08-09）与 Jetpack <code>androidx.appfunctions</code> 1.0.0-alpha10（2026-07-01 发布）实测核验，系统拆解 AppFunctions 的架构、核心 API、完整实现路径与选型决策。截至 2026 年 5 月，AppFunctions 与 Gemini 的端到端集成仍处于可信测试人员私有预览阶段，但框架 API 与开发工具已可使用。需要注意的是，该库仍处于 alpha 阶段，API 表面迭代频繁——alpha10 相比 alpha08 就引入了 <code>AppFunctionServiceEntryPoint</code>、<code>searchAppFunctions</code> 等变更，文中的代码示例应结合官方最新发布说明使用。</p>
+<blockquote>
+<p><strong>Key Takeaways</strong></p>
+<ul>
+<li><strong>AppFunctions 是移动端 MCP</strong>：Android 16 平台 API + Jetpack 库，让 App 成为 on-device MCP server，向 AI Agent 暴露可发现、可执行、带结构化 schema 的函数工具。</li>
+<li><strong>核心机制是注解驱动</strong>：用 <code>@AppFunction(isDescribedByKDoc = true)</code> 标记 <code>suspend</code> 函数，KSP 编译时生成 XML schema，Android OS 内置注册表索引，Agent 通过 <code>AppFunctionManager</code> 发现并执行。</li>
+<li><strong>本地调用、权限受控</strong>：跨 App 执行需要 <code>EXECUTE_APP_FUNCTIONS</code> 权限，函数受 <code>AppFunctionState.isEnabled</code> 控制，App 自身执行自己的函数无需额外权限。</li>
+<li><strong>落地前提是架构解耦</strong>：AppFunctions 直接调用业务逻辑而非 UI，若核心功能只挂在 Activity&#x2F;Fragment 上，真正的改造工作是把 repository 层抽成可独立调用。</li>
+</ul>
+</blockquote>
+<h2 id="AppFunctions-是什么：移动端-MCP-的-Android-答案"><a href="#AppFunctions-是什么：移动端-MCP-的-Android-答案" class="headerlink" title="AppFunctions 是什么：移动端 MCP 的 Android 答案"></a>AppFunctions 是什么：移动端 MCP 的 Android 答案</h2><p>Model Context Protocol（MCP）在 2024 年底由 Anthropic 推出后，迅速成为 AI Agent 连接外部工具的事实标准。但 MCP 的传统形态是<strong>服务器端</strong>的——Agent 通过网络连接一个远程 MCP server 调用其工具。这在桌面场景成立，在移动端却有一个根本问题：用户手机上的 App 能力无法通过远程服务器暴露，强行走网络既慢又泄露隐私。</p>
+<p>AppFunctions 填的正是这个空缺。Google 在<a target="_blank" rel="noopener" href="https://developer.android.com/ai/appfunctions">官方文档</a>中明确写道：</p>
+<blockquote>
+<p>AppFunctions 是一个 Android 平台 API，并配有相应的 Jetpack 库，旨在简化 Android MCP 集成。它能赋予你的应用强大的能力，使其像设备端 MCP 服务器一样运作。</p>
+</blockquote>
+<p>这意味着 App 不需要部署任何远程服务。它在本进程内定义函数，编译时生成 schema，系统在设备上索引这些函数。当 Gemini 或其他授权 Agent 需要调用时，走的是<strong>本地进程间通信，零网络往返</strong>。9to5Google 在 2026 年 2 月 25 日的<a target="_blank" rel="noopener" href="https://9to5google.com/2026/02/25/android-appfunctions-gemini">报道</a>中评价：这与五年前把语音识别搬到设备端是同一级别的架构转移——开发者谁先交付，谁就占据下一代的 Agent 入口。</p>
+<p>关于 <a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">AI Agent 接入可验证的 Android 开发流程</a> 的完整实践，可参阅此前的 Android CLI 与 Android Skills 最佳实践一文。</p>
+<p>下面这张图展示了 AppFunctions 从暴露到执行的完整流程：</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 340" style="max-width:100%;height:auto;" role="img" aria-label="AppFunctions 从暴露到执行的完整流程图">
+  <title>AppFunctions 从暴露到执行的完整流程</title>
+  <desc>展示 AppFunctions 四阶段流程：Provider App 用 @AppFunction 注解标记函数，KSP 编译期生成 XML Schema，Android 16 OS 内置注册表索引，Agent 通过 AppFunctionManager 本地执行，零网络往返。</desc>
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3ddc84"/><stop offset="100%" stop-color="#00d4aa"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <!-- 阶段1: App 定义 -->
+  <rect x="20" y="40" width="160" height="120" rx="10" fill="#0d1117" stroke="url(#g1)" stroke-width="2"/>
+  <text x="100" y="70" font-family="sans-serif" font-size="13" fill="#3ddc84" text-anchor="middle" font-weight="bold">① Provider App</text>
+  <text x="100" y="98" font-family="monospace" font-size="11" fill="#e0e0e0" text-anchor="middle">@AppFunction</text>
+  <text x="100" y="118" font-family="monospace" font-size="11" fill="#e0e0e0" text-anchor="middle">suspend fun createTask()</text>
+  <text x="100" y="142" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">KDoc 描述参数与返回</text>
+
+  <!-- 阶段2: KSP 编译 -->
+  <rect x="230" y="40" width="140" height="120" rx="10" fill="#0d1117" stroke="url(#g1)" stroke-width="2"/>
+  <text x="300" y="75" font-family="sans-serif" font-size="13" fill="#3ddc84" text-anchor="middle" font-weight="bold">② KSP 编译期</text>
+  <text x="300" y="103" font-family="monospace" font-size="11" fill="#e0e0e0" text-anchor="middle">生成 XML Schema</text>
+  <text x="300" y="128" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">函数名/参数/类型/描述</text>
+
+  <!-- 阶段3: OS 注册表 -->
+  <rect x="420" y="40" width="140" height="120" rx="10" fill="#0d1117" stroke="url(#g2)" stroke-width="2"/>
+  <text x="490" y="75" font-family="sans-serif" font-size="13" fill="#8b5cf6" text-anchor="middle" font-weight="bold">③ OS 注册表</text>
+  <text x="490" y="103" font-family="sans-serif" font-size="11" fill="#e0e0e0" text-anchor="middle">Android 16 内置</text>
+  <text x="490" y="123" font-family="sans-serif" font-size="11" fill="#e0e0e0" text-anchor="middle">索引所有 App 函数</text>
+
+  <!-- 阶段4: Agent 发现执行 -->
+  <rect x="610" y="40" width="190" height="120" rx="10" fill="#0d1117" stroke="url(#g2)" stroke-width="2"/>
+  <text x="705" y="70" font-family="sans-serif" font-size="13" fill="#8b5cf6" text-anchor="middle" font-weight="bold">④ Agent / 调用方</text>
+  <text x="705" y="96" font-family="monospace" font-size="10" fill="#e0e0e0" text-anchor="middle">AppFunctionManager</text>
+  <text x="705" y="116" font-family="monospace" font-size="10" fill="#e0e0e0" text-anchor="middle">.executeAppFunction()</text>
+  <text x="705" y="142" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">Gemini / 其他授权 App</text>
+
+  <!-- 箭头连接 -->
+  <line x1="180" y1="100" x2="225" y2="100" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="370" y1="100" x2="415" y2="100" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="560" y1="100" x2="605" y2="100" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 底部：本地调用说明 -->
+  <rect x="420" y="200" width="380" height="60" rx="8" fill="#1a1033" stroke="#8b5cf6" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="610" y="225" font-family="sans-serif" font-size="12" fill="#c4b5fd" text-anchor="middle">⑤ 本地 IPC 执行 · 零网络往返</text>
+  <text x="610" y="245" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">函数在 Provider App 进程的 AppFunctionService 中运行</text>
+  <line x1="705" y1="160" x2="705" y2="198" stroke="#6b7280" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+
+  <!-- 数据流标注 -->
+<p>  <text x="200" y="30" font-family="sans-serif" font-size="10" fill="#3ddc84" text-anchor="middle">注解标记</text><br>  <text x="390" y="30" font-family="sans-serif" font-size="10" fill="#3ddc84" text-anchor="middle">schema 生成</text><br>  <text x="580" y="30" font-family="sans-serif" font-size="10" fill="#8b5cf6" text-anchor="middle">索引注册</text><br>  <text x="410" y="300" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="middle">Agent 可同时考虑远程 MCP 工具与本地 AppFunctions</text><br></svg></p>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">AppFunctions 从暴露到执行的完整流程（基于 Android 官方文档架构图重绘）</figcaption>
+</figure>
+
+<p>理解了这张流程图，就能把握 AppFunctions 的本质：它把”App 能做什么”从 UI 背后提到编译期可描述、运行时可发现、调用时可执行的层面。</p>
+<h2 id="核心架构与组件体系"><a href="#核心架构与组件体系" class="headerlink" title="核心架构与组件体系"></a>核心架构与组件体系</h2><p>AppFunctions 的组件分两层：<strong>平台 API</strong>（<code>android.app.appfunctions</code>，Android 16 内置）负责系统级注册、发现与执行；<strong>Jetpack 库</strong>（<code>androidx.appfunctions</code>）负责用注解简化开发体验。两者关系如下：</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" style="max-width:100%;height:auto;" role="img" aria-label="AppFunctions 两层架构图">
+  <title>AppFunctions 两层架构：平台 API 与 Jetpack 库</title>
+  <desc>展示 AppFunctions 的两层架构：上层 Jetpack 库含 @AppFunction 注解、AppFunctionService、AppFunctionConfiguration，封装下层平台 API 含 AppFunctionManager、ExecuteAppFunctionRequest/Response、AppFunctionMetadata。</desc>
+  <defs>
+    <linearGradient id="jet" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3ddc84"/><stop offset="100%" stop-color="#00d4aa"/>
+    </linearGradient>
+  </defs>
+  <!-- Jetpack 层 -->
+  <rect x="30" y="30" width="660" height="130" rx="12" fill="#0d3d2a" stroke="url(#jet)" stroke-width="2"/>
+  <text x="60" y="58" font-family="sans-serif" font-size="14" fill="#3ddc84" font-weight="bold">Jetpack 层 · androidx.appfunctions（开发体验）</text>
+  <rect x="50" y="75" width="145" height="65" rx="6" fill="#0d1117" stroke="#3ddc84" stroke-width="1"/>
+  <text x="122" y="100" font-family="monospace" font-size="11" fill="#3ddc84" text-anchor="middle">@AppFunction</text>
+  <text x="122" y="118" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">@AppFunctionSerializable</text>
+  <text x="122" y="133" font-family="sans-serif" font-size="9" fill="#6b7280" text-anchor="middle">注解 + KSP 编译器</text>
+  <rect x="210" y="75" width="145" height="65" rx="6" fill="#0d1117" stroke="#3ddc84" stroke-width="1"/>
+  <text x="282" y="100" font-family="monospace" font-size="11" fill="#3ddc84" text-anchor="middle">AppFunctionService</text>
+  <text x="282" y="118" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">AppFunctionContext</text>
+  <text x="282" y="133" font-family="sans-serif" font-size="9" fill="#6b7280" text-anchor="middle">函数宿主与执行上下文</text>
+  <rect x="370" y="75" width="145" height="65" rx="6" fill="#0d1117" stroke="#3ddc84" stroke-width="1"/>
+  <text x="442" y="100" font-family="monospace" font-size="11" fill="#3ddc84" text-anchor="middle">AppFunctionConfiguration</text>
+  <text x="442" y="118" font-family="monospace" font-size="10" fill="#9ca3af" text-anchor="middle">.Provider</text>
+  <text x="442" y="133" font-family="sans-serif" font-size="9" fill="#6b7280" text-anchor="middle">DI 工厂注册</text>
+  <rect x="530" y="75" width="145" height="65" rx="6" fill="#0d1117" stroke="#3ddc84" stroke-width="1"/>
+  <text x="602" y="100" font-family="monospace" font-size="11" fill="#3ddc84" text-anchor="middle">三个 artifact</text>
+  <text x="602" y="118" font-family="monospace" font-size="9" fill="#9ca3af" text-anchor="middle">appfunctions</text>
+  <text x="602" y="131" font-family="monospace" font-size="9" fill="#9ca3af" text-anchor="middle">-service / -compiler</text>
+
+  <!-- 连接箭头：Jetpack 封装平台 -->
+<p>  <text x="360" y="185" font-family="sans-serif" font-size="11" fill="#6b7280" text-anchor="middle">↓ 封装简化 ↓</text></p>
+  <!-- 平台层 -->
+  <rect x="30" y="200" width="660" height="140" rx="12" fill="#1a1033" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="60" y="228" font-family="sans-serif" font-size="14" fill="#8b5cf6" font-weight="bold">平台 API 层 · android.app.appfunctions（Android 16 系统服务）</text>
+  <rect x="50" y="245" width="130" height="75" rx="6" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="115" y="270" font-family="monospace" font-size="10" fill="#8b5cf6" text-anchor="middle">AppFunctionManager</text>
+  <text x="115" y="288" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">系统服务入口</text>
+  <text x="115" y="304" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">发现/执行/状态</text>
+  <rect x="195" y="245" width="130" height="75" rx="6" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="260" y="270" font-family="monospace" font-size="10" fill="#8b5cf6" text-anchor="middle">ExecuteAppFunction</text>
+  <text x="260" y="285" font-family="monospace" font-size="10" fill="#8b5cf6" text-anchor="middle">Request/Response</text>
+  <text x="260" y="304" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">请求与响应载体</text>
+  <rect x="340" y="245" width="130" height="75" rx="6" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="405" y="270" font-family="monospace" font-size="10" fill="#8b5cf6" text-anchor="middle">AppFunctionMetadata</text>
+  <text x="405" y="288" font-family="monospace" font-size="10" fill="#8b5cf6" text-anchor="middle">AppFunctionState</text>
+  <text x="405" y="304" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">元数据与运行时状态</text>
+  <rect x="485" y="245" width="190" height="75" rx="6" fill="#0d1117" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="580" y="270" font-family="monospace" font-size="10" fill="#8b5cf6" text-anchor="middle">AppFunctionSearchSpec</text>
+  <text x="580" y="288" font-family="monospace" font-size="10" fill="#8b5cf6" text-anchor="middle">RegisterAppFunctionRequest</text>
+  <text x="580" y="304" font-family="monospace" font-size="10" fill="#8b5cf6" text-anchor="middle">AppFunctionException</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">AppFunctions 两层架构：Jetpack 库封装平台 API，开发者主要接触上层</figcaption>
+</figure>
+
+<p><strong>平台层的关键类</strong>（<code>android.app.appfunctions</code> 包）：</p>
+<ul>
+<li><code>AppFunctionManager</code>：系统服务入口，提供 <code>executeAppFunction()</code>、<code>getAppFunctionStates()</code>、<code>isAppFunctionEnabled()</code> 等方法，是调用方发现和执行函数的唯一通道。</li>
+<li><code>ExecuteAppFunctionRequest</code> &#x2F; <code>ExecuteAppFunctionResponse</code>：请求与响应载体。Request 通过 <code>Builder</code> 构建，需指定 <code>targetPackageName</code> 和 <code>functionIdentifier</code>。</li>
+<li><code>AppFunctionMetadata</code>：描述函数的名称、参数 schema、返回类型等，Agent 依据它判断该函数能否满足用户意图。</li>
+<li><code>AppFunctionState</code>：运行时状态，<code>isEnabled</code> 为 <code>true</code> 才允许执行——App 可动态启用&#x2F;禁用某个函数。</li>
+<li><code>AppFunctionException</code>：执行失败的统一异常类型。</li>
+</ul>
+<p><strong>Jetpack 层的关键组件</strong>（<code>androidx.appfunctions</code> 包）负责把上述底层 API 包装成开发者友好的形态：<code>@AppFunction</code> 注解替代手写 metadata，KSP 编译器自动生成 schema，<code>AppFunctionService</code> 承载函数宿主，<code>AppFunctionConfiguration.Provider</code> 处理依赖注入。Google 在<a target="_blank" rel="noopener" href="https://developer.android.com/jetpack/androidx/releases/appfunctions">Jetpack 发布说明</a>中明确建议：大多数开发者应通过 Jetpack SDK 而非直接操作平台 API 来构建 AppFunctions。</p>
+<h2 id="用-AppFunction-注解暴露函数：从代码到-Schema"><a href="#用-AppFunction-注解暴露函数：从代码到-Schema" class="headerlink" title="用 @AppFunction 注解暴露函数：从代码到 Schema"></a>用 @AppFunction 注解暴露函数：从代码到 Schema</h2><p>AppFunctions 的开发体验核心是一个注解：<code>@AppFunction</code>。开发者只需在 <code>suspend</code> 函数上标注它，KSP 编译器就会读取函数签名和 KDoc，生成包含参数名、类型、描述的结构化 schema，交由 Android OS 索引。</p>
+<p>来看官方文档中反复出现的 <code>createTask</code> 示例，它代表了任务管理类应用最典型的暴露场景：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> com.example.taskapp.appfunctions</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> androidx.appfunctions.AppFunctionContext</span><br><span class="line"><span class="keyword">import</span> androidx.appfunctions.service.AppFunction</span><br><span class="line"><span class="keyword">import</span> java.time.LocalDateTime</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">TaskAppFunctions</span> <span class="meta">@Inject</span> <span class="keyword">constructor</span></span>(</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">val</span> repository: TaskRepository</span><br><span class="line">) &#123;</span><br><span class="line">    <span class="comment">/**</span></span><br><span class="line"><span class="comment">     * Create a new task or reminder with a title, due time, and location.</span></span><br><span class="line"><span class="comment">     *</span></span><br><span class="line"><span class="comment">     * <span class="doctag">@param</span> title The descriptive title of the task (e.g., &quot;Pick up my package&quot;).</span></span><br><span class="line"><span class="comment">     * <span class="doctag">@param</span> dueDateTime The specific date and time when the task should be completed.</span></span><br><span class="line"><span class="comment">     * <span class="doctag">@param</span> location The physical location associated with the task (e.g., &quot;Work&quot;).</span></span><br><span class="line"><span class="comment">     * <span class="doctag">@return</span> The created Task</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="meta">@AppFunction(isDescribedByKDoc = true)</span></span><br><span class="line">    <span class="keyword">suspend</span> <span class="function"><span class="keyword">fun</span> <span class="title">createTask</span><span class="params">(</span></span></span><br><span class="line"><span class="params"><span class="function">        context: <span class="type">AppFunctionContext</span>,</span></span></span><br><span class="line"><span class="params"><span class="function">        title: <span class="type">String</span>,</span></span></span><br><span class="line"><span class="params"><span class="function">        dueDateTime: <span class="type">LocalDateTime</span>? = <span class="literal">null</span>,</span></span></span><br><span class="line"><span class="params"><span class="function">        location: <span class="type">String</span>? = <span class="literal">null</span>,</span></span></span><br><span class="line"><span class="params"><span class="function">    )</span></span>: Task = repository.createTask(title, dueDateTime, location)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里有几个关键点值得注意。</p>
+<p><code>isDescribedByKDoc = true</code> 这个参数告诉编译器：把函数的 KDoc 注释作为 schema 的 description 字段。**KDoc 不只是给人看的文档，更是 AI 模型读的”工具说明书”**。当 Gemini 要判断”用户想取快递”该调用哪个函数时，它读的正是这段 KDoc。因此参数描述里带上示例值（如 <code>&quot;Pick up my package&quot;</code>、<code>&quot;Work&quot;</code>），能显著提升模型选对函数、填对参数的概率。这把”文档质量”从代码规范问题变成了 Agent 能力问题——函数描述应当进入 Code Review 流程。</p>
+<p>返回类型 <code>Task</code> 用 <code>@AppFunctionSerializable</code> 标注，编译器会自动生成它的 schema 序列化逻辑：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@AppFunctionSerializable(isDescribedByKDoc = true)</span></span><br><span class="line"><span class="keyword">data</span> <span class="class"><span class="keyword">class</span> <span class="title">Task</span></span>(</span><br><span class="line">    <span class="keyword">val</span> id: String,</span><br><span class="line">    <span class="keyword">val</span> title: String,</span><br><span class="line">    <span class="keyword">val</span> dueDateTime: LocalDateTime? = <span class="literal">null</span>,</span><br><span class="line">    <span class="keyword">val</span> location: String? = <span class="literal">null</span>,</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+
+<p><code>AppFunctionContext</code> 是运行时注入的执行上下文，提供访问应用资源的能力。函数本身是 <code>suspend</code> 的，意味着可以在协程中执行异步操作（如数据库写入），这与现代 Android 开发范式一致。</p>
+<p>YouTube 上有开发者对这套注解机制做了实操演示，可以直观看到编译期生成的 schema 与运行时调用效果：</p>
+<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;margin:1.5rem 0;border-radius:8px;">
+<iframe src="https://www.youtube.com/embed/Sj4ebKD9OpY" title="Exploring Android 16: App Functions" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen></iframe>
+</div>
+<noscript>视频：Exploring Android 16: App Functions — 演示 @AppFunction 注解、生成的 schema 与 ADB 验证流程 (https://www.youtube.com/watch?v=Sj4ebKD9OpY)</noscript>
+
+<h2 id="完整实现步骤：让一个函数可被-Agent-调用"><a href="#完整实现步骤：让一个函数可被-Agent-调用" class="headerlink" title="完整实现步骤：让一个函数可被 Agent 调用"></a>完整实现步骤：让一个函数可被 Agent 调用</h2><p>把一个函数从普通 Kotlin 代码变成 Agent 可调用工具，需要五步。下面以一个依赖 Hilt 注入 <code>TaskRepository</code> 的任务应用为例。</p>
+<h3 id="Step-1：配置-compileSdk-36-与依赖"><a href="#Step-1：配置-compileSdk-36-与依赖" class="headerlink" title="Step 1：配置 compileSdk 36 与依赖"></a>Step 1：配置 compileSdk 36 与依赖</h3><p>AppFunctions 平台 API 在 Android 16（API 36）落地，因此 <code>compileSdk</code> 需设为 36。同时引入三个 Jetpack artifact 并启用 KSP：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// build.gradle.kts (app 模块)</span></span><br><span class="line">plugins &#123;</span><br><span class="line">    alias(libs.plugins.android.application)</span><br><span class="line">    alias(libs.plugins.kotlin.android)</span><br><span class="line">    alias(libs.plugins.google.devtools.ksp)  <span class="comment">// 处理 @AppFunction 注解</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">android &#123;</span><br><span class="line">    compileSdk = <span class="number">36</span>  <span class="comment">// Android 16，平台 AppFunctions API 所在</span></span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">ksp &#123;</span><br><span class="line">    arg(<span class="string">&quot;appfunctions:aggregateAppFunctions&quot;</span>, <span class="string">&quot;true&quot;</span>)  <span class="comment">// 聚合所有模块的函数</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">dependencies &#123;</span><br><span class="line">    implementation(libs.androidx.appfunctions)          <span class="comment">// 核心注解与类型</span></span><br><span class="line">    ksp(libs.androidx.appfunctions.compiler)            <span class="comment">// 编译期 schema 生成器</span></span><br><span class="line">    <span class="comment">// 早期版本需要 appfunctions-service artifact 承载宿主；</span></span><br><span class="line">    <span class="comment">// alpha10 引入 AppFunctionServiceEntryPoint 后结构有调整，以官方文档为准</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>对应的 version catalog 条目：</p>
+<figure class="highlight toml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># libs.versions.toml</span></span><br><span class="line"><span class="section">[versions]</span></span><br><span class="line"><span class="attr">appfunctions</span> = <span class="string">&quot;1.0.0-alpha10&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="section">[libraries]</span></span><br><span class="line"><span class="attr">androidx-appfunctions</span> = &#123; group = <span class="string">&quot;androidx.appfunctions&quot;</span>, name = <span class="string">&quot;appfunctions&quot;</span>, version.ref = <span class="string">&quot;appfunctions&quot;</span> &#125;</span><br><span class="line"><span class="attr">androidx-appfunctions-compiler</span> = &#123; group = <span class="string">&quot;androidx.appfunctions&quot;</span>, name = <span class="string">&quot;appfunctions-compiler&quot;</span>, version.ref = <span class="string">&quot;appfunctions&quot;</span> &#125;</span><br><span class="line"><span class="comment"># alpha10 起 artifact 列表有调整：appfunctions-service 可能合并或重命名，</span></span><br><span class="line"><span class="comment"># 且新增了 appfunctions-testing 测试库，请以官方发布说明为准</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="Step-2：定义-AppFunction-函数与-AppFunctionSerializable-数据类"><a href="#Step-2：定义-AppFunction-函数与-AppFunctionSerializable-数据类" class="headerlink" title="Step 2：定义 @AppFunction 函数与 @AppFunctionSerializable 数据类"></a>Step 2：定义 @AppFunction 函数与 @AppFunctionSerializable 数据类</h3><p>即上一节的 <code>createTask</code> 函数与 <code>Task</code> 数据类。这里强调一个架构前提：<strong>函数体内直接调用 <code>repository.createTask()</code>，而非启动 Activity 让用户手动操作</strong>。这意味着你的业务逻辑必须能脱离 UI 独立运行。如果今天核心功能只挂在 Activity&#x2F;Fragment 里，真正的改造工作是先把 repository 和 use case 层抽出来。</p>
+<h3 id="Step-3：实现-AppFunctionConfiguration-Provider-提供依赖工厂"><a href="#Step-3：实现-AppFunctionConfiguration-Provider-提供依赖工厂" class="headerlink" title="Step 3：实现 AppFunctionConfiguration.Provider 提供依赖工厂"></a>Step 3：实现 AppFunctionConfiguration.Provider 提供依赖工厂</h3><p>带依赖（如 <code>TaskRepository</code>）的函数类无法被系统无参实例化，需要通过 <code>AppFunctionConfiguration.Provider</code> 告诉运行时如何创建实例。在 Application 类中实现这个接口：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@HiltAndroidApp</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">TaskApp</span> : <span class="type">Application</span></span>(), AppFunctionConfiguration.Provider &#123;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Inject</span></span><br><span class="line">    <span class="keyword">lateinit</span> <span class="keyword">var</span> taskFunctions: Provider&lt;TaskAppFunctions&gt;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">override</span> <span class="keyword">val</span> appFunctionConfiguration: AppFunctionConfiguration</span><br><span class="line">        <span class="keyword">get</span>() = AppFunctionConfiguration</span><br><span class="line">            .Builder()</span><br><span class="line">            .addEnclosingClassFactory(TaskAppFunctions::<span class="keyword">class</span>.java) &#123;</span><br><span class="line">                taskFunctions.<span class="keyword">get</span>()  <span class="comment">// Hilt 提供已注入 repository 的实例</span></span><br><span class="line">            &#125;</span><br><span class="line">            .build()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>addEnclosingClassFactory</code> 注册了一个工厂：当系统需要执行 <code>TaskAppFunctions</code> 中的函数时，调用这个 lambda 拿到实例。这里借助 Hilt 的 <code>Provider</code> 延迟获取，确保依赖图完整。</p>
+<h3 id="Step-4：AppFunctionService-承载执行"><a href="#Step-4：AppFunctionService-承载执行" class="headerlink" title="Step 4：AppFunctionService 承载执行"></a>Step 4：AppFunctionService 承载执行</h3><p><code>AppFunctionService</code> 是函数实际运行的宿主。Jetpack 库在底层把它与平台 <code>AppFunction</code> 接口对接——当 <code>AppFunctionManager.executeAppFunction()</code> 被调用时，请求路由到对应 App 的 <code>AppFunctionService</code>，在其中执行注解标记的 <code>suspend</code> 函数。开发者通常不需要手写 Service 样板，编译器生成的代码会处理分发。</p>
+<h3 id="Step-5：用-ADB-验证注册"><a href="#Step-5：用-ADB-验证注册" class="headerlink" title="Step 5：用 ADB 验证注册"></a>Step 5：用 ADB 验证注册</h3><p>部署到 Android 16 设备或模拟器后，用一条命令检查函数是否被系统成功索引：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">adb shell cmd app_function list-app-functions</span><br></pre></td></tr></table></figure>
+
+<p>输出会列出已注册的函数及其 metadata（函数标识、参数 schema 等）。这是官方文档反复强调的验证手段——在 alpha 阶段，先用 ADB 确认注册成功，再考虑接入 Agent 调用。</p>
+<p>关于 <a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">Android 设备交互与验证工具</a> 的更多用法，可参阅 Android CLI 相关实践一文。</p>
+<h2 id="发现与执行：Agent-如何调用你的函数"><a href="#发现与执行：Agent-如何调用你的函数" class="headerlink" title="发现与执行：Agent 如何调用你的函数"></a>发现与执行：Agent 如何调用你的函数</h2><p>站在调用方（Agent 或其他授权 App）的视角，调用一个 AppFunction 分三步：获取管理器、验证可用性、执行请求。</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 1. 获取 AppFunctionManager，null 表示设备不支持</span></span><br><span class="line"><span class="keyword">val</span> manager = context.getSystemService(AppFunctionManager::<span class="keyword">class</span>.java)</span><br><span class="line">    ?: <span class="keyword">return</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 2. 验证目标函数是否启用（跨包查询需 EXECUTE_APP_FUNCTIONS 权限）</span></span><br><span class="line">manager.isAppFunctionEnabled(</span><br><span class="line">    <span class="string">&quot;com.example.taskapp&quot;</span>,   <span class="comment">// targetPackageName</span></span><br><span class="line">    <span class="string">&quot;createTask&quot;</span>,            <span class="comment">// functionIdentifier</span></span><br><span class="line">    executor,</span><br><span class="line">    <span class="keyword">object</span> : OutcomeReceiver&lt;<span class="built_in">Boolean</span>, Exception&gt; &#123;</span><br><span class="line">        <span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">onResult</span><span class="params">(enabled: <span class="type">Boolean</span>)</span></span> &#123;</span><br><span class="line">            <span class="keyword">if</span> (!enabled) <span class="keyword">return</span>  <span class="comment">// 函数被禁用，不可调用</span></span><br><span class="line">            executeTask(manager)</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">onError</span><span class="params">(error: <span class="type">Exception</span>)</span></span> &#123;&#125;</span><br><span class="line">    &#125;</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="comment">// 3. 构建请求并执行</span></span><br><span class="line"><span class="function"><span class="keyword">fun</span> <span class="title">executeTask</span><span class="params">(manager: <span class="type">AppFunctionManager</span>)</span></span> &#123;</span><br><span class="line">    <span class="keyword">val</span> request = ExecuteAppFunctionRequest.Builder()</span><br><span class="line">        .setTargetPackageName(<span class="string">&quot;com.example.taskapp&quot;</span>)</span><br><span class="line">        .setFunctionIdentifier(<span class="string">&quot;createTask&quot;</span>)</span><br><span class="line">        <span class="comment">// .setAttribution(attribution)  // 可选：调用归因，未来可能必填</span></span><br><span class="line">        .build()</span><br><span class="line"></span><br><span class="line">    manager.executeAppFunction(</span><br><span class="line">        request,</span><br><span class="line">        executor,</span><br><span class="line">        <span class="literal">null</span>,  <span class="comment">// CancellationSignal，可取消执行</span></span><br><span class="line">        <span class="keyword">object</span> : OutcomeReceiver&lt;ExecuteAppFunctionResponse, AppFunctionException&gt; &#123;</span><br><span class="line">            <span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">onResult</span><span class="params">(result: <span class="type">ExecuteAppFunctionResponse</span>)</span></span> &#123;</span><br><span class="line">                <span class="comment">// 从 result 读取返回的 Task 数据</span></span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">override</span> <span class="function"><span class="keyword">fun</span> <span class="title">onError</span><span class="params">(error: <span class="type">AppFunctionException</span>)</span></span> &#123;</span><br><span class="line">                <span class="comment">// 处理执行失败</span></span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    )</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>权限模型是这个流程的安全基石。官方 API 参考明确：<strong>跨组件执行函数，调用方必须持有 <code>EXECUTE_APP_FUNCTIONS</code> 或 <code>EXECUTE_APP_FUNCTIONS_SYSTEM</code> 权限</strong>；而 App 执行自己定义的函数不需要任何额外权限。这设计让普通 App 能自调用（例如自己的快捷功能调用自己的函数），同时把跨 App 调用收敛到系统授权的 Agent（如 Gemini）。</p>
+<p><code>AppInteractionAttribution</code> 是一个值得提前关注的字段。<code>ExecuteAppFunctionRequest.Builder</code> 的 <code>setAttribution()</code> 用于声明”谁、为什么”触发了这次调用。官方说明这是当前可选、但未来版本可能变为必填——它服务于隐私透明度，让用户知道某个 App 函数是被哪个 Agent 以什么目的调用的。现在就传入归因信息，能避免后续 API 收紧时的适配成本。</p>
+<p>Google I&#x2F;O 2026 的官方演讲完整演示了从实现 AppFunctions 到用测试 Agent 验证、再到与 Gemini 端到端运行的流程，是理解整套机制最直观的参考：</p>
+<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;margin:1.5rem 0;border-radius:8px;">
+<iframe src="https://www.youtube.com/embed/2K7VVAMUYPw" title="Connect to the intelligence system - Google I/O 2026" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen></iframe>
+</div>
+<noscript>视频：Connect to the intelligence system — Google I/O 2026 官方演讲，演示 AppFunctions 实现到 Gemini 运行的完整流程 (https://www.youtube.com/watch?v=2K7VVAMUYPw)</noscript>
+
+<h2 id="AppFunctions-vs-Intent-vs-App-Actions-vs-MCP：选型对比"><a href="#AppFunctions-vs-Intent-vs-App-Actions-vs-MCP：选型对比" class="headerlink" title="AppFunctions vs Intent vs App Actions vs MCP：选型对比"></a>AppFunctions vs Intent vs App Actions vs MCP：选型对比</h2><p>Android 上让 App 能力被外部触发的方案不止 AppFunctions 一种。理解它们的边界，才能在合适的场景选对工具。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>AppFunctions</th>
+<th>Intent &#x2F; DeepLink</th>
+<th>App Actions (App Actions API)</th>
+<th>远程 MCP Server</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>本质</strong></td>
+<td>结构化函数工具，直接调业务逻辑</td>
+<td>UI 导航跳转信号</td>
+<td>基于 Built-in Intent 的语音&#x2F;快捷动作</td>
+<td>服务器端工具协议</td>
+</tr>
+<tr>
+<td><strong>调用方式</strong></td>
+<td><code>AppFunctionManager.executeAppFunction()</code> 传结构化参数</td>
+<td><code>startActivity(intent)</code></td>
+<td>Google Assistant 匹配 BII 触发 intent</td>
+<td>Agent 网络连接 MCP server</td>
+</tr>
+<tr>
+<td><strong>输入输出</strong></td>
+<td>强类型 schema，结构化请求&#x2F;响应</td>
+<td>额外数据（Bundle），无 schema 约束</td>
+<td>intent + 实体参数</td>
+<td>JSON schema 工具定义</td>
+</tr>
+<tr>
+<td><strong>面向对象</strong></td>
+<td>任意授权 Agent &#x2F; AI 助手</td>
+<td>任意 App</td>
+<td>主要面向 Google Assistant</td>
+<td>任意 MCP 客户端</td>
+</tr>
+<tr>
+<td><strong>执行位置</strong></td>
+<td>设备本地，零网络往返</td>
+<td>设备本地</td>
+<td>设备本地</td>
+<td>远程服务器</td>
+</tr>
+<tr>
+<td><strong>AI 适配度</strong></td>
+<td>高：schema + KDoc 天然供模型理解</td>
+<td>低：无结构化描述</td>
+<td>中：固定 BII 词汇表</td>
+<td>高：标准 MCP schema</td>
+</tr>
+<tr>
+<td><strong>状态控制</strong></td>
+<td><code>AppFunctionState</code> 动态启用&#x2F;禁用</td>
+<td>无原生运行时开关</td>
+<td>无原生运行时开关</td>
+<td>由 server 自行控制</td>
+</tr>
+<tr>
+<td><strong>引入版本</strong></td>
+<td>Android 16（API 36）+ Jetpack</td>
+<td>早期 Android</td>
+<td>Android 5+（App Actions 独立演进）</td>
+<td>跨平台，非 Android 专有</td>
+</tr>
+</tbody></table>
+<p>关键区别在于抽象层次。Intent 是”打开某个界面”的导航信号，它假设用户接着手动操作；App Actions 把 Intent 包装成语义化的内置动作，但仍落到 Intent 跳转；AppFunctions 彻底跳过 UI 层，直接调用 repository 级别的函数，输入输出都是结构化数据。这使得 AI Agent 无需”看懂”界面就能完成任务。</p>
+<p>远程 MCP 与 AppFunctions 不是竞争而是互补。Google 官方指出，Agent 在处理用户请求时会<strong>同时考虑远程 MCP 工具和本地 AppFunctions</strong>：需要云端数据或算力时走远程 MCP，需要操作用户手机上的 App 时走本地 AppFunctions。一个日程应用完全可以同时暴露”查询云端会议列表”（远程 MCP）和”在本地日历创建事件”（AppFunctions），让 Agent 组合编排。</p>
+<p>关于 <a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">App 与 AI Agent 协作的工程化实践</a>，可参阅 Android CLI 与 Skills 最佳实践一文。</p>
+<h2 id="现状与落地建议"><a href="#现状与落地建议" class="headerlink" title="现状与落地建议"></a>现状与落地建议</h2><p>AppFunctions 目前处于 alpha 阶段，几个事实需要正视。</p>
+<p><strong>Jetpack 库仍在快速迭代</strong>。<code>androidx.appfunctions</code> 从 2025 年 6 月的首个 alpha02 到本文写作时的 alpha10（2026-07-01），API 表面多次调整——<code>AppFunctionSerializable</code>、<code>AppFunctionPrimitiveTypeMetadata</code>、<code>AppFunctionManagerCompat</code> 等在早期版本引入，而 alpha10 又带来了 <code>AppFunctionServiceEntryPoint</code>、<code>searchAppFunctions</code>、<code>AppFunctionInstruction</code> 等新 API，连 artifact 列表都有变化（新增 <code>appfunctions-testing</code> 测试库）。直接用于生产需要做好跟随升级的准备。</p>
+<p><strong>端到端 Agent 体验尚未开放</strong>。官方文档说明，截至 2026 年 5 月，AppFunctions 与 Gemini 的集成面向可信测试人员私有预览。普通开发者现在能做的是实现函数、用 ADB 验证注册，但还无法让 Gemini 真正调用。Google 设有<a target="_blank" rel="noopener" href="https://developer.android.com/ai/appfunctions">早期体验计划（EAP）</a>，登记意向后有机会被选入端到端测试。</p>
+<p><strong>现在该做什么？</strong> 趁框架定型前做架构准备，是性价比最高的投入。核心动作就一条：<strong>审视你的 App，把需要暴露给自动化的功能，从 Activity&#x2F;Fragment 下沉到可独立调用的 repository 和 use case</strong>。一个判断标准是——如果去掉所有 UI，这个功能能否通过 repository 单独完成？能，就具备了暴露为 AppFunction 的前提；不能，就先重构。这层解耦无论 AppFunctions 是否普及，都是健康的架构演进。</p>
+<p>同时可以建立”文档即工程”的意识。既然 KDoc 直接决定 AI 能否正确理解和调用函数，函数描述、参数示例值就该纳入 Code Review，像对待公开 API 文档一样对待它们。</p>
+<h2 id="常见问题"><a href="#常见问题" class="headerlink" title="常见问题"></a>常见问题</h2><h3 id="AppFunctions-支持哪些-Android-版本？"><a href="#AppFunctions-支持哪些-Android-版本？" class="headerlink" title="AppFunctions 支持哪些 Android 版本？"></a>AppFunctions 支持哪些 Android 版本？</h3><p>AppFunctions 平台 API 要求 Android 16（API level 36）或更高版本。Jetpack 库的 <code>minSdk</code> 可以设得更低以兼容编译，但运行时只有 Android 16 设备才会真正索引和执行函数。调用方应先通过 <code>getSystemService(AppFunctionManager::class.java)</code> 返回是否为 null 来判断设备支持情况。</p>
+<h3 id="AppFunctions-和-App-Actions-有什么区别？"><a href="#AppFunctions-和-App-Actions-有什么区别？" class="headerlink" title="AppFunctions 和 App Actions 有什么区别？"></a>AppFunctions 和 App Actions 有什么区别？</h3><p>App Actions 基于 Built-in Intent（BII），面向 Google Assistant，本质还是触发 Intent 跳转到 Activity，依赖 UI 流程。AppFunctions 跳过 UI，直接调用结构化函数，输入输出有 schema，面向任意授权 Agent。前者是”用语音打开界面”，后者是”用 AI 调用功能”。</p>
+<h3 id="普通开发者现在能用-AppFunctions-吗？"><a href="#普通开发者现在能用-AppFunctions-吗？" class="headerlink" title="普通开发者现在能用 AppFunctions 吗？"></a>普通开发者现在能用 AppFunctions 吗？</h3><p>可以实现并验证，但端到端 Agent 调用尚未开放。开发者现在能做的是：按本文步骤实现 <code>@AppFunction</code> 函数，部署到 Android 16 设备，用 <code>adb shell cmd app_function list-app-functions</code> 确认注册成功。让 Gemini 等系统 Agent 真正调用，需等待正式发布或申请加入 EAP。</p>
+<h3 id="AppFunctions-必须依赖-Gemini-吗？"><a href="#AppFunctions-必须依赖-Gemini-吗？" class="headerlink" title="AppFunctions 必须依赖 Gemini 吗？"></a>AppFunctions 必须依赖 Gemini 吗？</h3><p>不是。AppFunctions 是通用的函数暴露框架，任何持有 <code>EXECUTE_APP_FUNCTIONS</code> 权限的 App 都能通过 <code>AppFunctionManager</code> 发现和执行。Gemini 只是首个系统级消费者。理论上其他 AI 助手、自动化工具甚至普通 App 都可以成为调用方——这正是 Google 把它定位为”移动端 MCP”而非”Gemini 专用接口”的原因。</p>
+<h2 id="结论"><a href="#结论" class="headerlink" title="结论"></a>结论</h2><p>AppFunctions 的价值不在于多了一个 API，而在于它重新定义了 App 与 AI Agent 的协作边界：App 不再只是被打开的界面，而是贡献结构化工具的设备端 MCP server。</p>
+<p>回顾要点：</p>
+<ul>
+<li><strong>定位</strong>：移动端 MCP，App 作为 on-device MCP server，本地调用、零网络往返。</li>
+<li><strong>机制</strong>：<code>@AppFunction</code> 注解 + KSP 编译期生成 schema + OS 内置注册表索引 + <code>AppFunctionManager</code> 发现执行。</li>
+<li><strong>前提</strong>：业务逻辑与 UI 解耦，repository 可独立调用；KDoc 作为 AI 可读文档需纳入工程规范。</li>
+<li><strong>节奏</strong>：框架 alpha 阶段、Gemini 集成私有预览，现在做架构准备性价比最高。</li>
+</ul>
+<p>对于专注 Android 的开发者，这波 Agent 化浪潮和当年从命令行到 GUI、从单机到云端的转变同级。提前把 App 的能力原子化、可描述化，是在为下一轮交互范式占位。当 Gemini 或其他 Agent 真正向所有 App 开放调用时，架构已就绪的人会最先吃到红利。</p>
+<p>更多 AI Agent 与 Android 工程化实践，敬请关注后续 AppFunctions 实战系列更新。</p>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "把 App 变成 AI 的智能体工具箱：Android 16 AppFunctions 框架详解",
+  "description": "深度解析 Android 16 AppFunctions 框架——移动端 MCP 的 Android 答案，从架构定位、核心 API、@AppFunction 注解机制到完整实现步骤与选型对比，附 Kotlin 代码示例。",
+  "datePublished": "2026-08-22",
+  "dateModified": "2026-08-22",
+  "author": {
+    "@type": "Person",
+    "name": "枢影",
+    "url": "https://blog.shuying.me/about/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "枢影Kernel",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://blog.shuying.me/images/avatar.png"
+    }
+  },
+  "image": "https://blog.shuying.me/images/android16-appfunctions-cover.png",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://blog.shuying.me/2026/08/22/android16-appfunctions-framework/"
+  },
+  "keywords": ["Android 16", "AppFunctions", "AI Agent", "MCP", "Jetpack"]
+}
+</script>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/08/22/2026-08-22-android16-appfunctions-framework/" title="把 App 变成 AI 的智能体工具箱：Android 16 AppFunctions 框架详解">https://blog.shuying.me/2026/08/22/2026-08-22-android16-appfunctions-framework/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/AI-Agent/" rel="tag"># AI Agent</a>
+              <a href="/tags/Android-16/" rel="tag"># Android 16</a>
+              <a href="/tags/AppFunctions/" rel="tag"># AppFunctions</a>
+              <a href="/tags/MCP/" rel="tag"># MCP</a>
+              <a href="/tags/Jetpack/" rel="tag"># Jetpack</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/08/18/2023-02-20-Android%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95%E5%AE%9E%E8%B7%B5/" rel="prev" title="Android单元测试实践">
+      <i class="fa fa-chevron-left"></i> Android单元测试实践
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/08/22/2026-08-22-ai-edge-gallery-architecture/" rel="next" title="Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现">
+      Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#AppFunctions-%E6%98%AF%E4%BB%80%E4%B9%88%EF%BC%9A%E7%A7%BB%E5%8A%A8%E7%AB%AF-MCP-%E7%9A%84-Android-%E7%AD%94%E6%A1%88"><span class="nav-number">1.</span> <span class="nav-text">AppFunctions 是什么：移动端 MCP 的 Android 答案</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E6%9E%B6%E6%9E%84%E4%B8%8E%E7%BB%84%E4%BB%B6%E4%BD%93%E7%B3%BB"><span class="nav-number">2.</span> <span class="nav-text">核心架构与组件体系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%94%A8-AppFunction-%E6%B3%A8%E8%A7%A3%E6%9A%B4%E9%9C%B2%E5%87%BD%E6%95%B0%EF%BC%9A%E4%BB%8E%E4%BB%A3%E7%A0%81%E5%88%B0-Schema"><span class="nav-number">3.</span> <span class="nav-text">用 @AppFunction 注解暴露函数：从代码到 Schema</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%8C%E6%95%B4%E5%AE%9E%E7%8E%B0%E6%AD%A5%E9%AA%A4%EF%BC%9A%E8%AE%A9%E4%B8%80%E4%B8%AA%E5%87%BD%E6%95%B0%E5%8F%AF%E8%A2%AB-Agent-%E8%B0%83%E7%94%A8"><span class="nav-number">4.</span> <span class="nav-text">完整实现步骤：让一个函数可被 Agent 调用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Step-1%EF%BC%9A%E9%85%8D%E7%BD%AE-compileSdk-36-%E4%B8%8E%E4%BE%9D%E8%B5%96"><span class="nav-number">4.1.</span> <span class="nav-text">Step 1：配置 compileSdk 36 与依赖</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Step-2%EF%BC%9A%E5%AE%9A%E4%B9%89-AppFunction-%E5%87%BD%E6%95%B0%E4%B8%8E-AppFunctionSerializable-%E6%95%B0%E6%8D%AE%E7%B1%BB"><span class="nav-number">4.2.</span> <span class="nav-text">Step 2：定义 @AppFunction 函数与 @AppFunctionSerializable 数据类</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Step-3%EF%BC%9A%E5%AE%9E%E7%8E%B0-AppFunctionConfiguration-Provider-%E6%8F%90%E4%BE%9B%E4%BE%9D%E8%B5%96%E5%B7%A5%E5%8E%82"><span class="nav-number">4.3.</span> <span class="nav-text">Step 3：实现 AppFunctionConfiguration.Provider 提供依赖工厂</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Step-4%EF%BC%9AAppFunctionService-%E6%89%BF%E8%BD%BD%E6%89%A7%E8%A1%8C"><span class="nav-number">4.4.</span> <span class="nav-text">Step 4：AppFunctionService 承载执行</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Step-5%EF%BC%9A%E7%94%A8-ADB-%E9%AA%8C%E8%AF%81%E6%B3%A8%E5%86%8C"><span class="nav-number">4.5.</span> <span class="nav-text">Step 5：用 ADB 验证注册</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%91%E7%8E%B0%E4%B8%8E%E6%89%A7%E8%A1%8C%EF%BC%9AAgent-%E5%A6%82%E4%BD%95%E8%B0%83%E7%94%A8%E4%BD%A0%E7%9A%84%E5%87%BD%E6%95%B0"><span class="nav-number">5.</span> <span class="nav-text">发现与执行：Agent 如何调用你的函数</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#AppFunctions-vs-Intent-vs-App-Actions-vs-MCP%EF%BC%9A%E9%80%89%E5%9E%8B%E5%AF%B9%E6%AF%94"><span class="nav-number">6.</span> <span class="nav-text">AppFunctions vs Intent vs App Actions vs MCP：选型对比</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%8E%B0%E7%8A%B6%E4%B8%8E%E8%90%BD%E5%9C%B0%E5%BB%BA%E8%AE%AE"><span class="nav-number">7.</span> <span class="nav-text">现状与落地建议</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98"><span class="nav-number">8.</span> <span class="nav-text">常见问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#AppFunctions-%E6%94%AF%E6%8C%81%E5%93%AA%E4%BA%9B-Android-%E7%89%88%E6%9C%AC%EF%BC%9F"><span class="nav-number">8.1.</span> <span class="nav-text">AppFunctions 支持哪些 Android 版本？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#AppFunctions-%E5%92%8C-App-Actions-%E6%9C%89%E4%BB%80%E4%B9%88%E5%8C%BA%E5%88%AB%EF%BC%9F"><span class="nav-number">8.2.</span> <span class="nav-text">AppFunctions 和 App Actions 有什么区别？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%99%AE%E9%80%9A%E5%BC%80%E5%8F%91%E8%80%85%E7%8E%B0%E5%9C%A8%E8%83%BD%E7%94%A8-AppFunctions-%E5%90%97%EF%BC%9F"><span class="nav-number">8.3.</span> <span class="nav-text">普通开发者现在能用 AppFunctions 吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#AppFunctions-%E5%BF%85%E9%A1%BB%E4%BE%9D%E8%B5%96-Gemini-%E5%90%97%EF%BC%9F"><span class="nav-number">8.4.</span> <span class="nav-text">AppFunctions 必须依赖 Gemini 吗？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-number">9.</span> <span class="nav-text">结论</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

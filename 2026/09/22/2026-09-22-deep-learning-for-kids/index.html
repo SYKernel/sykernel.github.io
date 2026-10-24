@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="用&quot;猜动物&quot;&quot;猜价格&quot;&quot;背卷子&quot;这些孩子熟悉的比喻，讲清深度学习的原理：神经网络是什么、AI 怎么被训练出来、为什么它会一本正经地说错话。零代码基础，附一个十分钟就能上手的浏览器实验（Google Teachable Machine），适合亲子共读。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程">
+<meta property="og:url" content="https://blog.shuying.me/2026/09/22/2026-09-22-deep-learning-for-kids/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="用&quot;猜动物&quot;&quot;猜价格&quot;&quot;背卷子&quot;这些孩子熟悉的比喻，讲清深度学习的原理：神经网络是什么、AI 怎么被训练出来、为什么它会一本正经地说错话。零代码基础，附一个十分钟就能上手的浏览器实验（Google Teachable Machine），适合亲子共读。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/deep-learning-kids-cover.png">
+<meta property="article:published_time" content="2026-09-22T01:30:00.000Z">
+<meta property="article:modified_time" content="2026-09-21T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="深度学习">
+<meta property="article:tag" content="AI 科普">
+<meta property="article:tag" content="神经网络">
+<meta property="article:tag" content="机器学习入门">
+<meta property="article:tag" content="亲子教育">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/deep-learning-kids-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/09/22/2026-09-22-deep-learning-for-kids/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/09/22/2026-09-22-deep-learning-for-kids/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-09-22 09:30:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-09-22T09:30:00+08:00">2026-09-22</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/AI-%E7%A7%91%E6%99%AE/" itemprop="url" rel="index"><span itemprop="name">AI 科普</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">用"猜动物""猜价格""背卷子"这些孩子熟悉的比喻，讲清深度学习的原理：神经网络是什么、AI 怎么被训练出来、为什么它会一本正经地说错话。零代码基础，附一个十分钟就能上手的浏览器实验（Google Teachable Machine），适合亲子共读。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/deep-learning-kids-cover.png" itemprop="contentUrl">
+        </div>
+        <p>打开手机相册，搜一个”猫”字，几千张照片里所有的猫都被一秒找了出来。有没有想过它是怎么做到的？没有任何程序员给手机写过”猫有尖耳朵、有胡须、走路没有声音”这样的规则——事实上，你也写不出这样的规则：黑猫没有白毛、折耳猫耳朵不尖、照片里的猫可能只露出半个脑袋。</p>
+<p>手机的 AI 是自己”看”会的。这种让机器从大量例子里自己找规律的技术，就叫<strong>深度学习</strong>。它今天能认图、能听懂你说话、能翻译外语、能陪你聊天，也藏在你常用的每一个 App 里。</p>
+<p>这篇教程不需要任何编程基础，不背一个公式。小学高年级的同学可以自己读；更低龄的孩子，适合和爸爸妈妈一起边读边玩。全文只讲三个游戏：<strong>猜动物、猜价格、背卷子</strong>——讲完之后，你会理解 AI 是怎么”变聪明”的，还能花十分钟亲手训练一个自己的 AI。</p>
+<blockquote>
+<p><strong>Key Takeaways</strong></p>
+<ul>
+<li>深度学习就是”从大量例子里自己找规律”：人不写规则，机器看例子、猜答案、被纠正，一遍遍循环后自己变聪明。</li>
+<li>神经网络是一层层排队的”小格子”，每个格子只会做简单的加减法；GPT-3 里有 1750 亿个这样的参数旋钮（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2005.14165">OpenAI 论文</a>，2020）。</li>
+<li>训练就是玩”猜一猜→看差多少→调一调→再猜”的游戏，数据是教材，例子越多、越准，学得越好。</li>
+<li>死记硬背的 AI 不是好学生——它能背下所有练习题却考不了新题，这叫”过拟合”。</li>
+<li>今天就能动手：用 Google 的 Teachable Machine 在浏览器里十分钟训练一个自己的图像 AI，不用写一行代码。</li>
+</ul>
+</blockquote>
+<h2 id="一、三个词先分清：AI、机器学习、深度学习"><a href="#一、三个词先分清：AI、机器学习、深度学习" class="headerlink" title="一、三个词先分清：AI、机器学习、深度学习"></a>一、三个词先分清：AI、机器学习、深度学习</h2><p>这三个词经常被混着说，其实它们是三个大小不同的圈子。</p>
+<p><strong>AI（人工智能）是最大的那个圈</strong>：凡是让机器做”看起来需要动脑子”的事情，都算。你家的扫地机器人绕开桌腿，用的是程序员一条条写好的规则，它也是 AI——一个”背规则”的 AI。</p>
+<p><strong>机器学习是中间的圈</strong>：不写规则，改给例子。就像教小孩认狗——没人给他背”狗有四条腿、有毛、会汪汪叫”的清单，他就是多见了几只狗，自己总结出来的。机器学习就是让机器也这么学。</p>
+<p><strong>深度学习是最里面的圈</strong>，也是现在最厉害的一支。它用很多层”小筛子”一层层地学：第一层认出最简单的东西（一条边、一个色块），第二层把边拼成耳朵和尾巴，第三层才认出”这是一只猫”。层数多，所以叫”深度”。</p>
+<p>为什么要费这么大劲？因为<strong>规则是写不完的</strong>。你可以试着给”猫”写规则：尖耳朵？折耳猫不同意。有胡须？刚剪了毛的猫呢？白色的？黑猫第一个抗议。而”从例子里学”就没有这个问题——例子够多，机器自己能把各种猫的共同点找出来。这就是 AI 从”背规则的机器”变成”会学习的学生”的关键一步。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 340" style="max-width:100%;height:auto;" role="img" aria-label="深度学习认猫的流程：一张猫的照片经过三层小筛子，第一层认边缘和色块，第二层拼出耳朵尾巴和胡须，第三层认出整只猫并输出答案">
+  <title>深度学习是怎么认猫的</title>
+  <desc>输入一张猫的照片，经过三层筛选：第一层认出边缘和色块，第二层把这些碎片拼成耳朵、尾巴、胡须等部件，第三层认出整只猫，最后输出"是猫，92% 确定"。</desc>
+  <!-- 输入：猫 -->
+  <rect x="30" y="70" width="170" height="170" rx="14" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2.5"/>
+  <circle cx="115" cy="140" r="42" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+  <polygon points="88,112 96,86 108,110" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+  <polygon points="142,110 154,86 122,112" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+  <circle cx="100" cy="136" r="4" fill="#f59e0b"/>
+  <circle cx="130" cy="136" r="4" fill="#f59e0b"/>
+  <path d="M 100 156 Q 115 168 130 156" fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+  <line x1="112" y1="152" x2="96" y2="168" stroke="#f59e0b" stroke-width="1.5"/>
+  <line x1="118" y1="152" x2="134" y2="168" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="115" y="270" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle">输入：一张照片</text>
+  <!-- 箭头 -->
+  <line x1="200" y1="155" x2="240" y2="155" stroke="#6b7280" stroke-width="2.5"/>
+  <polygon points="240,150 250,155 240,160" fill="#6b7280"/>
+  <!-- 三层筛子 -->
+  <rect x="252" y="60" width="160" height="90" rx="12" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"/>
+  <text x="332" y="96" font-family="sans-serif" font-size="14" fill="#38bdf8" text-anchor="middle" font-weight="bold">第一层筛子</text>
+  <text x="332" y="122" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">认出边、线、色块</text>
+  <rect x="252" y="170" width="160" height="90" rx="12" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"/>
+  <text x="332" y="206" font-family="sans-serif" font-size="14" fill="#22c55e" text-anchor="middle" font-weight="bold">第二层筛子</text>
+  <text x="332" y="232" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">拼出耳朵、尾巴、胡须</text>
+  <rect x="252" y="280" width="160" height="52" rx="12" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"/>
+  <text x="332" y="302" font-family="sans-serif" font-size="13" fill="#a78bfa" text-anchor="middle" font-weight="bold">第三层筛子</text>
+  <text x="332" y="322" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">认出"整只猫"</text>
+  <!-- 层间箭头 -->
+  <line x1="332" y1="150" x2="332" y2="168" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="328,168 332,176 336,168" fill="#6b7280"/>
+  <line x1="332" y1="260" x2="332" y2="278" stroke="#6b7280" stroke-width="2"/>
+  <polygon points="328,278 332,286 336,278" fill="#6b7280"/>
+  <!-- 输出 -->
+  <line x1="412" y1="185" x2="470" y2="185" stroke="#6b7280" stroke-width="2.5"/>
+  <polygon points="470,180 480,185 470,190" fill="#6b7280"/>
+  <rect x="484" y="110" width="200" height="150" rx="14" fill="#0d1f2d" stroke="#22c55e" stroke-width="2.5"/>
+  <text x="584" y="160" font-family="sans-serif" font-size="15" fill="#22c55e" text-anchor="middle" font-weight="bold">输出：是猫！</text>
+  <text x="584" y="192" font-family="monospace" font-size="14" fill="#e5e7eb" text-anchor="middle">92%</text>
+  <text x="584" y="222" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">AI 不会说"100% 确定"，</text>
+  <text x="584" y="240" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">它永远在猜一个概率</text>
+  <!-- 右侧说明 -->
+  <rect x="710" y="80" width="130" height="210" rx="12" fill="#111827" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 4"/>
+  <text x="775" y="112" font-family="sans-serif" font-size="12" fill="#e5e7eb" text-anchor="middle" font-weight="bold">每一层都在</text>
+  <text x="775" y="132" font-family="sans-serif" font-size="12" fill="#e5e7eb" text-anchor="middle">"往前学一步"</text>
+  <text x="775" y="162" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">没有人规定第二层</text>
+  <text x="775" y="180" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">必须认耳朵——</text>
+  <text x="775" y="198" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">是它自己从例子里</text>
+  <text x="775" y="216" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">琢磨出来的分工</text>
+</svg>
+<figcaption>Figure 1. 一张照片穿过三层"小筛子"变成"是猫"。作者根据深度学习的基本原理绘制。</figcaption>
+</figure>
+
+<h2 id="二、神经网络：几百万个”只会加法”的笨格子排队"><a href="#二、神经网络：几百万个”只会加法”的笨格子排队" class="headerlink" title="二、神经网络：几百万个”只会加法”的笨格子排队"></a>二、神经网络：几百万个”只会加法”的笨格子排队</h2><p>深度学习的主角叫<strong>神经网络</strong>。名字听着吓人，其实拆开看特别简单。</p>
+<p>想象教室里有个小同学，全班同学都往他手里递纸条，每张纸条上写一个数字。每张纸条的”信任度”不一样：好朋友写的他特别信（乘个大数），不熟的同学写的就打个折（乘个小数），还有些纸条是来”唱反调”的——乘上负数，总和反而被往下拉。他把所有纸条上的数字加起来，如果总和超过了一个数，他就举手喊：”我发现了！”</p>
+<p>这就是一个”神经元”——AI 里最小的零件。它会的东西只有一件事：<strong>把数字乘上信任度、加起来、决定要不要举手</strong>。是不是笨得可以？</p>
+<p>但神奇的事情在后面：把成千上万个这样的笨格子排成队，一层传给一层，就组成了神经网络。”信任度”每调整一次，整个队伍的判断就变一次。科学家把每个信任度叫一个<strong>参数</strong>——你可以把它想象成一个小旋钮。</p>
+<p>一个现代 AI 有多少个旋钮？GPT-3 这个写文章的 AI 有 <strong>1750 亿</strong>个参数（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2005.14165">OpenAI 论文《Language Models are Few-Shot Learners》，2020</a>）。1750 亿是什么概念？把数字写出来是 175 后面跟 9 个 0；如果你一秒数一粒米，不吃不睡，也要数五千五百多年。每个格子干的活儿都笨得只会乘法和加法，而那 1750 亿个旋钮，就拧在千千万万个这样的笨格子上——拧对了，它们就能写出像模像样的文章。</p>
+<p>所以别被”神经网络”这个名字骗了：<strong>它不是一群聪明的小脑子，而是一支由笨格子组成的、纪律超好的军团</strong>。</p>
+<h2 id="三、训练：一场”猜价格”的游戏"><a href="#三、训练：一场”猜价格”的游戏" class="headerlink" title="三、训练：一场”猜价格”的游戏"></a>三、训练：一场”猜价格”的游戏</h2><p>有了军团，怎么让它变聪明？答案是玩一个你肯定玩过的游戏：<strong>你猜，我告诉你差多少，你再猜</strong>。</p>
+<p>就像电视里的猜价格节目：一瓶酱油，你猜 10 块，主持人说”低了”；你猜 30 块，主持人说”高了”；你一点点逼近 15 块 9。AI 认猫也是一样：</p>
+<ol>
+<li>AI 看一张照片，猜：”是猫，60% 确定。”</li>
+<li>揭晓答案：不对，这是狗！</li>
+<li>AI 把差了多少换算成一个”错误分数”，然后每个小格子把自己的旋钮<strong>朝让错误变小一点的方向，拧一点点</strong>。</li>
+<li>再看下一张照片，再猜，再拧。</li>
+</ol>
+<p>就这样循环几百万次，AI 从”闭着眼睛乱猜”变成”看一眼就知道”。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 400" style="max-width:100%;height:auto;" role="img" aria-label="训练循环：AI 猜答案，对照正确答案算出差多少，把所有旋钮拧一点点，再用下一道题继续猜，重复几百万次">
+  <title>训练循环：猜一猜 → 差多少 → 拧一拧 → 再猜</title>
+  <desc>四个步骤组成一个圈：AI 猜答案（猜一猜）；对照正确答案算出错误分数（差多少）；每个参数朝减小错误的方向微调（拧一拧）；换下一道题继续（再猜）。中心标注重复几百万次。旁边注释：每次拧多大力度叫学习率，拧太大容易过头，拧太小学得慢。</desc>
+  <circle cx="360" cy="200" r="130" fill="none" stroke="#a78bfa" stroke-width="3" stroke-dasharray="14 8"/>
+  <rect x="285" y="30" width="150" height="62" rx="12" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"/>
+  <text x="360" y="56" font-family="sans-serif" font-size="14" fill="#38bdf8" text-anchor="middle" font-weight="bold">① 猜一猜</text>
+  <text x="360" y="78" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">"是猫，60% 确定"</text>
+  <rect x="480" y="170" width="150" height="62" rx="12" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"/>
+  <text x="555" y="196" font-family="sans-serif" font-size="14" fill="#f59e0b" text-anchor="middle" font-weight="bold">② 差多少</text>
+  <text x="555" y="218" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">对照答案算错误分数</text>
+  <rect x="285" y="308" width="150" height="62" rx="12" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"/>
+  <text x="360" y="334" font-family="sans-serif" font-size="14" fill="#22c55e" text-anchor="middle" font-weight="bold">③ 拧一拧</text>
+  <text x="360" y="356" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">每个旋钮朝变准的方向微调</text>
+  <rect x="90" y="170" width="150" height="62" rx="12" fill="#0d1f2d" stroke="#ef4444" stroke-width="2"/>
+  <text x="165" y="196" font-family="sans-serif" font-size="14" fill="#ef4444" text-anchor="middle" font-weight="bold">④ 再猜</text>
+  <text x="165" y="218" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">换下一张照片继续</text>
+  <text x="360" y="192" font-family="sans-serif" font-size="15" fill="#e5e7eb" text-anchor="middle" font-weight="bold">重复几百万次</text>
+  <text x="360" y="214" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">从乱猜 → 高手</text>
+  <rect x="676" y="120" width="164" height="150" rx="12" fill="#111827" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 4"/>
+  <text x="758" y="150" font-family="sans-serif" font-size="12" fill="#e5e7eb" text-anchor="middle" font-weight="bold">每次拧多大？</text>
+  <text x="758" y="178" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">这叫学习率，</text>
+  <text x="758" y="198" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">像拧音量旋钮：拧太大</text>
+  <text x="758" y="218" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">一下子过了头，拧太小</text>
+  <text x="758" y="238" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">半天调不到合适的音量</text>
+</svg>
+<figcaption>Figure 2. 训练就是这四步围成的圈。作者根据深度学习训练原理绘制。</figcaption>
+</figure>
+
+<p>这个”拧旋钮”的游戏在历史上真的创造过历史。2012 年，多伦多大学的三位研究者带着一个叫 AlexNet 的神经网络参加 ImageNet 图像识别大赛：第二名用的是传统方法，错误率 26.2%；AlexNet 只有 15.3%——全场都被这个差距惊呆了，那一届比赛被普遍当作深度学习时代的起点（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1404.5997">AlexNet 论文，NeurIPS 2012</a>）。</p>
+<p>下棋的 AI 更神奇。2016 年 3 月，AlphaGo 以 4 比 1 战胜围棋世界冠军李世石。一年多以后的 AlphaGo Zero 更夸张：<strong>没有人给它看过一盘人类棋谱</strong>，它从”只知道规则、完全乱下”开始，自己跟自己下了 3 天，一共 490 万盘。就这么练出来的棋力，超过了战胜李世石的那一版（《<a target="_blank" rel="noopener" href="https://www.nature.com/articles/nature24270">Mastering the game of Go without human knowledge</a>》，Nature 2017；<a target="_blank" rel="noopener" href="https://deepmind.google/discover/blog/alphago-zero-learning-from-scratch/">DeepMind 博客</a>）。它用的正是 Figure 2 那个圈：下（猜）→ 输赢（差多少）→ 调旋钮（拧一拧）→ 再下。</p>
+<h2 id="四、数据就是教材：例子不对，学出来的就不对"><a href="#四、数据就是教材：例子不对，学出来的就不对" class="headerlink" title="四、数据就是教材：例子不对，学出来的就不对"></a>四、数据就是教材：例子不对，学出来的就不对</h2><p>猜价格游戏里有个前提：每猜一次，主持人得告诉你对错。AI 的”教材”就是<strong>带标准答案的例子</strong>——想让它认猫，就要给它看几万张照片，每张都贴好标签：这张是猫，这张是狗，这张是兔子。贴标签这个过程叫<strong>标注</strong>。</p>
+<p>教材的质量直接决定学生的水平，有三个坑要小心：</p>
+<ul>
+<li><strong>例子太少</strong>：只给 AI 看 5 张白色波斯猫的照片，它可能总结出”猫 &#x3D; 白色的长毛动物”。然后你给它看黑猫，它就懵了。</li>
+<li><strong>例子太偏</strong>：训练照片里的猫全趴在沙发上，AI 可能真的会把”沙发”当成猫的一部分。你让它认草地上的猫，它就不确定了。数据偏一点，AI 就跟着偏一点。</li>
+<li><strong>答案贴错了</strong>：教材里混进了标着”猫”的狗，AI 会把错误也学进去。工程里这叫”垃圾进，垃圾出”。</li>
+</ul>
+<p>所以做 AI 的人有很大一部分时间不在”教 AI”，而在<strong>当教材管理员</strong>：收集、清洗、给例子贴标签。听起来不如”训练”酷，但没有好教材，再聪明的学生也白搭。</p>
+<h2 id="五、过拟合：死记硬背的学生考不了新题"><a href="#五、过拟合：死记硬背的学生考不了新题" class="headerlink" title="五、过拟合：死记硬背的学生考不了新题"></a>五、过拟合：死记硬背的学生考不了新题</h2><p>这里有个特别重要、也特别容易被忽略的问题。</p>
+<p>班上有两种同学。一种把 100 道练习题的答案背得滚瓜烂熟，练习册倒背如流，可考试换一道新题，立刻傻眼。另一种做题时真的搞懂了方法，新题旧题都会。</p>
+<p>AI 也会当第一种学生，这叫<strong>过拟合</strong>。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 320" style="max-width:100%;height:auto;" role="img" aria-label="背答案的 AI 和举一反三的 AI 对比：前者把训练照片连背景一起记住，只认沙发上的猫；后者从多样的例子里学到猫的共同点，什么背景的猫都认得">
+  <title>死记硬背 vs 举一反三</title>
+  <desc>左边：背答案的 AI，训练集里的猫都趴在沙发上，它把沙发也当成了猫的特征，见到草地上的猫就认不出。右边：举一反三的 AI，见过各种背景的猫，学会的是猫本身。</desc>
+  <!-- 左：背答案 -->
+  <rect x="30" y="30" width="385" height="250" rx="14" fill="#0d1f2d" stroke="#ef4444" stroke-width="2.5"/>
+  <text x="222" y="66" font-family="sans-serif" font-size="15" fill="#ef4444" text-anchor="middle" font-weight="bold">背答案的 AI（过拟合）</text>
+  <rect x="60" y="90" width="130" height="86" rx="8" fill="#111827" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="125" y="128" font-family="sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">练习题：</text>
+  <text x="125" y="150" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">猫都在沙发上</text>
+  <text x="205" y="140" font-family="sans-serif" font-size="18" fill="#6b7280">→</text>
+  <rect x="230" y="90" width="150" height="86" rx="8" fill="#111827" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="305" y="118" font-family="sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">它学到的"猫"：</text>
+  <text x="305" y="140" font-family="sans-serif" font-size="11" fill="#f59e0b" text-anchor="middle">猫 + 沙发</text>
+  <text x="305" y="160" font-family="sans-serif" font-size="11" fill="#f59e0b" text-anchor="middle">（连沙发一起记住了）</text>
+  <rect x="60" y="196" width="320" height="62" rx="8" fill="#111827" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="220" y="222" font-family="sans-serif" font-size="12" fill="#d1d5db" text-anchor="middle">考试：草地上的猫</text>
+  <text x="220" y="244" font-family="sans-serif" font-size="12" fill="#ef4444" text-anchor="middle" font-weight="bold">"这是……什么？"(懵)</text>
+  <!-- 右：举一反三 -->
+  <rect x="445" y="30" width="385" height="250" rx="14" fill="#0d1f2d" stroke="#22c55e" stroke-width="2.5"/>
+  <text x="637" y="66" font-family="sans-serif" font-size="15" fill="#22c55e" text-anchor="middle" font-weight="bold">举一反三的 AI（学得好）</text>
+  <rect x="475" y="90" width="130" height="86" rx="8" fill="#111827" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="540" y="118" font-family="sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">练习题：</text>
+  <text x="540" y="140" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">沙发上、草地上、</text>
+  <text x="540" y="158" font-family="sans-serif" font-size="11" fill="#d1d5db" text-anchor="middle">纸箱里的猫都有</text>
+  <text x="620" y="140" font-family="sans-serif" font-size="18" fill="#6b7280">→</text>
+  <rect x="645" y="90" width="150" height="86" rx="8" fill="#111827" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="720" y="118" font-family="sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">它学到的"猫"：</text>
+  <text x="720" y="140" font-family="sans-serif" font-size="11" fill="#22c55e" text-anchor="middle">尖耳朵、胡须、</text>
+  <text x="720" y="158" font-family="sans-serif" font-size="11" fill="#22c55e" text-anchor="middle">竖瞳……跟背景无关</text>
+  <rect x="475" y="196" width="320" height="62" rx="8" fill="#111827" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="635" y="222" font-family="sans-serif" font-size="12" fill="#d1d5db" text-anchor="middle">考试：草地上的猫</text>
+  <text x="635" y="244" font-family="sans-serif" font-size="12" fill="#22c55e" text-anchor="middle" font-weight="bold">"是猫，96% 确定"</text>
+</svg>
+<figcaption>Figure 3. 同样是学认猫，背答案的和真学会的，考试表现完全不同。作者绘制。</figcaption>
+</figure>
+
+<p>怎么避免？办法朴素得出奇：</p>
+<ul>
+<li><strong>例子又多又杂</strong>：什么颜色的猫、什么背景的猫、什么角度的猫都给 AI 见过，它就没法靠背背景偷懒。</li>
+<li><strong>用”没见过的题”考试</strong>：把数据藏起来一部分，训练时不许看，最后拿来当期末考。期末考成绩好，才算真学会了。你以后会看到所有 AI 论文都有”训练集&#x2F;验证集&#x2F;测试集”三个数字，就是这么来的。</li>
+</ul>
+<p>两种学生的差别，一张表看明白：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>背答案的 AI（过拟合）</th>
+<th>举一反三的 AI</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>练习题长什么样</td>
+<td>猫都趴在沙发上</td>
+<td>沙发上、草地上、纸箱里的猫都有</td>
+</tr>
+<tr>
+<td>它学到的”猫”</td>
+<td>猫 + 沙发（背景一起背了）</td>
+<td>尖耳朵、胡须，与背景无关</td>
+</tr>
+<tr>
+<td>考试：草地上的猫</td>
+<td>认不出</td>
+<td>认得出</td>
+</tr>
+</tbody></table>
+<h2 id="六、今天就动手：十分钟训练一个你自己的-AI"><a href="#六、今天就动手：十分钟训练一个你自己的-AI" class="headerlink" title="六、今天就动手：十分钟训练一个你自己的 AI"></a>六、今天就动手：十分钟训练一个你自己的 AI</h2><p>读到这里，你已经掌握了深度学习的全部主角：格子（神经网络）、旋钮（参数）、猜-调循环（训练）、教材（数据）、期末考（测试）。现在亲手把它们跑起来。</p>
+<p>Google 有个免费网页工具 <a target="_blank" rel="noopener" href="https://teachablemachine.withgoogle.com/">Teachable Machine</a>，官网的说明是”不需要任何专业知识，不需要写代码”。它支持教电脑认图片、认声音、认姿势，全程浏览器里点鼠标就能完成。官方还特别说明：可以选择完全在设备上运行——摄像头和麦克风的数据<strong>不离开你的电脑</strong>，家长可以放心。</p>
+<p>三步走（以”认手势”为例）：</p>
+<ol>
+<li><strong>收集（Gather）</strong>：新建一个图像项目，建两个类别——“竖大拇指”和”竖食指”。用摄像头给每个类别拍 30 张左右照片，注意换换背景、换换角度（还记得为什么吗？防止 AI 背答案）。</li>
+<li><strong>训练（Train Model）</strong>：点一下训练按钮，等十几秒。这一下背后发生的事就是 Figure 2 那个圈在飞速旋转。</li>
+<li><strong>考试（预览）</strong>：现在对着摄像头做手势，AI 会实时告诉你它认成了什么。然后开始”折磨”它：手势斜一点、远一点、背景换一换，看它什么时候出错。</li>
+</ol>
+<p><strong>每个错误都值得欢呼</strong>——因为你正好可以当一回侦探：它为什么认错？是刚才数据拍得太单一，还是两个手势不够好区分？想明白了，回到第一步补拍几张”错过的场景”，重新训练，看错误率掉下去。这一套”收集→训练→考试→找原因→补数据”，就是全世界 AI 工程师每天工作的核心循环，你刚刚用十分钟体验了一遍。</p>
+<h2 id="七、AI-很聪明，但也会一本正经地胡说"><a href="#七、AI-很聪明，但也会一本正经地胡说" class="headerlink" title="七、AI 很聪明，但也会一本正经地胡说"></a>七、AI 很聪明，但也会一本正经地胡说</h2><p>最后说句公道话，免得你被 AI 吓到，或者太信它。</p>
+<p>AI 现在能做的事很多：认图、听声、翻译、写文章、写代码。Google 已经把 AI 助手接进了 Android 的开发工具链，工程师让它读工程、改代码、跑测试（我在<a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">把 AI 接进 Android 开发工具链的实践</a>里写过）；写代码的工程师还会让 AI 帮忙生成测试、检查质量（<a href="https://blog.shuying.me/2026/09/05/ai-unit-test-pyramid/">AI 与测试金字塔</a>）。</p>
+<p>但回到第三节那个游戏：**AI 从头到尾都在”猜概率”，不是在”知道”**。它说”是猫，92%”，意思是”根据我见过的例子，这像猫的程度是 92%”，而不是”我认识猫这种动物”。所以你让聊天 AI 讲一个不存在的历史故事，它可能讲得绘声绘色——它只是在猜”接下来最像人话的字是什么”，它自己分不清”学过的”和”编的”。</p>
+<p>所以记住这三句话：</p>
+<ul>
+<li>AI 是<strong>博学但会一本正经说错话的朋友</strong>，不是老师。它说的话，要用你自己的脑子再过一遍。</li>
+<li>AI 犯错不代表它坏，只是它的”知道”和我们的知道不是一回事。</li>
+<li><strong>人负责判断，AI 负责干活</strong>——这个分工，在可见的未来都不会变。</li>
+</ul>
+<h2 id="FAQ"><a href="#FAQ" class="headerlink" title="FAQ"></a>FAQ</h2><h3 id="学深度学习需要会编程吗？"><a href="#学深度学习需要会编程吗？" class="headerlink" title="学深度学习需要会编程吗？"></a>学深度学习需要会编程吗？</h3><p>不需要。像 Teachable Machine 这样的工具，全程点鼠标就能训练 AI。编程是到你想”自己搭一个 AI”而不是”用现成工具训练一个 AI”时才需要的，小学阶段完全不用着急。</p>
+<h3 id="神经网络和人的大脑一样吗？"><a href="#神经网络和人的大脑一样吗？" class="headerlink" title="神经网络和人的大脑一样吗？"></a>神经网络和人的大脑一样吗？</h3><p>不一样，只是灵感来自大脑。人脑有约 860 亿个神经元，连接方式复杂得多，而且会生长、会做梦、会累。AI 的”神经元”只是会做加减法的小格子，名字是科学家的致敬，别当真。AI 能在某些具体事情上做得飞快（比如一秒翻几千张照片），但它不会真正”理解”猫是什么。</p>
+<h3 id="为什么-AI-有时会非常自信地说错话？"><a href="#为什么-AI-有时会非常自信地说错话？" class="headerlink" title="为什么 AI 有时会非常自信地说错话？"></a>为什么 AI 有时会非常自信地说错话？</h3><p>因为它的每句话都是”猜出来的概率”。它没有”我知道&#x2F;我不知道”的开关——训练时见过的它很熟，没见过的它也照样敢猜，而且语气一样自信。这是所有大模型至今没有根治的毛病，所以重要的事情永远要自己核实。</p>
+<h3 id="多大的孩子可以开始玩这些？"><a href="#多大的孩子可以开始玩这些？" class="headerlink" title="多大的孩子可以开始玩这些？"></a>多大的孩子可以开始玩这些？</h3><p>认一认、玩 Teachable Machine：能操作平板就可以，建议家长陪同；Scratch 之类的图形化编程：七八岁以上；学 Python 写自己的神经网络：中学以后也完全来得及。顺序比年龄重要——先玩出兴趣，再谈原理。</p>
+<h2 id="结语"><a href="#结语" class="headerlink" title="结语"></a>结语</h2><p>回顾一下这篇教程走过的路。AI、机器学习、深度学习是三个越来越小的圈；深度学习用一层层”只会加法的笨格子”（神经网络）从例子里找规律；训练就是”猜一猜→差多少→拧一拧→再猜”的循环。数据是教材，例子越多越杂，学得越好；死记硬背的学生（过拟合）考不了新题，所以要用藏起来的题当期末考。最后记住：AI 在猜概率，不是在知道，重要的事永远自己核实。</p>
+<p>如果你读完意犹未尽，路线图是这样的：<strong>今天</strong>，打开 Teachable Machine 训练你的第一个 AI；<strong>之后</strong>，试试 Scratch，用积木块给训练好的模型做个小游戏；<strong>中学以后</strong>，学 Python，亲手写一个认数字的小网络。想看更进阶的故事——AI 工程师如今连”教 AI 干活的说明书”都能用算法自动训练了——可以读我写的<a href="https://blog.shuying.me/2026/09/21/skillopt-code-review-skill/">《从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能》</a>。</p>
+<p>深度学习听起来高深，拆开看不过是三个孩子都会玩的游戏。<strong>动手，永远是学会一样东西最快的路。</strong></p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/09/22/2026-09-22-deep-learning-for-kids/" title="深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程">https://blog.shuying.me/2026/09/22/2026-09-22-deep-learning-for-kids/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0/" rel="tag"># 深度学习</a>
+              <a href="/tags/AI-%E7%A7%91%E6%99%AE/" rel="tag"># AI 科普</a>
+              <a href="/tags/%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/" rel="tag"># 神经网络</a>
+              <a href="/tags/%E6%9C%BA%E5%99%A8%E5%AD%A6%E4%B9%A0%E5%85%A5%E9%97%A8/" rel="tag"># 机器学习入门</a>
+              <a href="/tags/%E4%BA%B2%E5%AD%90%E6%95%99%E8%82%B2/" rel="tag"># 亲子教育</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/09/21/2026-09-21-skillopt-code-review-skill/" rel="prev" title="从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能">
+      <i class="fa fa-chevron-left"></i> 从手写 SKILL.md 到自动训练：用 SkillOpt 优化一个代码评审技能
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/10/08/2026-10-08-shopify-helix-ai-workflow/" rel="next" title="Shopify Helix AI 工作流详解：检查点与质量门如何驱动 300+ 屏 App 迁回原生">
+      Shopify Helix AI 工作流详解：检查点与质量门如何驱动 300+ 屏 App 迁回原生 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E3%80%81%E4%B8%89%E4%B8%AA%E8%AF%8D%E5%85%88%E5%88%86%E6%B8%85%EF%BC%9AAI%E3%80%81%E6%9C%BA%E5%99%A8%E5%AD%A6%E4%B9%A0%E3%80%81%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0"><span class="nav-number">1.</span> <span class="nav-text">一、三个词先分清：AI、机器学习、深度学习</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%8C%E3%80%81%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C%EF%BC%9A%E5%87%A0%E7%99%BE%E4%B8%87%E4%B8%AA%E2%80%9D%E5%8F%AA%E4%BC%9A%E5%8A%A0%E6%B3%95%E2%80%9D%E7%9A%84%E7%AC%A8%E6%A0%BC%E5%AD%90%E6%8E%92%E9%98%9F"><span class="nav-number">2.</span> <span class="nav-text">二、神经网络：几百万个”只会加法”的笨格子排队</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%89%E3%80%81%E8%AE%AD%E7%BB%83%EF%BC%9A%E4%B8%80%E5%9C%BA%E2%80%9D%E7%8C%9C%E4%BB%B7%E6%A0%BC%E2%80%9D%E7%9A%84%E6%B8%B8%E6%88%8F"><span class="nav-number">3.</span> <span class="nav-text">三、训练：一场”猜价格”的游戏</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9B%E3%80%81%E6%95%B0%E6%8D%AE%E5%B0%B1%E6%98%AF%E6%95%99%E6%9D%90%EF%BC%9A%E4%BE%8B%E5%AD%90%E4%B8%8D%E5%AF%B9%EF%BC%8C%E5%AD%A6%E5%87%BA%E6%9D%A5%E7%9A%84%E5%B0%B1%E4%B8%8D%E5%AF%B9"><span class="nav-number">4.</span> <span class="nav-text">四、数据就是教材：例子不对，学出来的就不对</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%94%E3%80%81%E8%BF%87%E6%8B%9F%E5%90%88%EF%BC%9A%E6%AD%BB%E8%AE%B0%E7%A1%AC%E8%83%8C%E7%9A%84%E5%AD%A6%E7%94%9F%E8%80%83%E4%B8%8D%E4%BA%86%E6%96%B0%E9%A2%98"><span class="nav-number">5.</span> <span class="nav-text">五、过拟合：死记硬背的学生考不了新题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD%E3%80%81%E4%BB%8A%E5%A4%A9%E5%B0%B1%E5%8A%A8%E6%89%8B%EF%BC%9A%E5%8D%81%E5%88%86%E9%92%9F%E8%AE%AD%E7%BB%83%E4%B8%80%E4%B8%AA%E4%BD%A0%E8%87%AA%E5%B7%B1%E7%9A%84-AI"><span class="nav-number">6.</span> <span class="nav-text">六、今天就动手：十分钟训练一个你自己的 AI</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%83%E3%80%81AI-%E5%BE%88%E8%81%AA%E6%98%8E%EF%BC%8C%E4%BD%86%E4%B9%9F%E4%BC%9A%E4%B8%80%E6%9C%AC%E6%AD%A3%E7%BB%8F%E5%9C%B0%E8%83%A1%E8%AF%B4"><span class="nav-number">7.</span> <span class="nav-text">七、AI 很聪明，但也会一本正经地胡说</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#FAQ"><span class="nav-number">8.</span> <span class="nav-text">FAQ</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AD%A6%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E9%9C%80%E8%A6%81%E4%BC%9A%E7%BC%96%E7%A8%8B%E5%90%97%EF%BC%9F"><span class="nav-number">8.1.</span> <span class="nav-text">学深度学习需要会编程吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C%E5%92%8C%E4%BA%BA%E7%9A%84%E5%A4%A7%E8%84%91%E4%B8%80%E6%A0%B7%E5%90%97%EF%BC%9F"><span class="nav-number">8.2.</span> <span class="nav-text">神经网络和人的大脑一样吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-AI-%E6%9C%89%E6%97%B6%E4%BC%9A%E9%9D%9E%E5%B8%B8%E8%87%AA%E4%BF%A1%E5%9C%B0%E8%AF%B4%E9%94%99%E8%AF%9D%EF%BC%9F"><span class="nav-number">8.3.</span> <span class="nav-text">为什么 AI 有时会非常自信地说错话？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%9A%E5%A4%A7%E7%9A%84%E5%AD%A9%E5%AD%90%E5%8F%AF%E4%BB%A5%E5%BC%80%E5%A7%8B%E7%8E%A9%E8%BF%99%E4%BA%9B%EF%BC%9F"><span class="nav-number">8.4.</span> <span class="nav-text">多大的孩子可以开始玩这些？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E8%AF%AD"><span class="nav-number">9.</span> <span class="nav-text">结语</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

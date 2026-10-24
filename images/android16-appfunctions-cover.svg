@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="50%" stop-color="#161b28"/>
+      <stop offset="100%" stop-color="#1a1033"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3ddc84"/>
+      <stop offset="100%" stop-color="#00d4aa"/>
+    </linearGradient>
+    <linearGradient id="ai" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- 装饰网格 -->
+  <g opacity="0.06" stroke="#3ddc84" stroke-width="1">
+    <line x1="0" y1="157" x2="1200" y2="157"/>
+    <line x1="0" y1="315" x2="1200" y2="315"/>
+    <line x1="0" y1="473" x2="1200" y2="473"/>
+    <line x1="300" y1="0" x2="300" y2="630"/>
+    <line x1="600" y1="0" x2="600" y2="630"/>
+    <line x1="900" y1="0" x2="900" y2="630"/>
+  </g>
+
+  <!-- 左侧：App 工具箱图标 -->
+  <g transform="translate(110, 180)">
+    <rect x="0" y="0" width="180" height="140" rx="16" fill="none" stroke="url(#accent)" stroke-width="3"/>
+    <!-- 工具箱手柄 -->
+    <path d="M 55 0 L 55 -20 Q 55 -35 70 -35 L 110 -35 Q 125 -35 125 -20 L 125 0" fill="none" stroke="url(#accent)" stroke-width="3"/>
+    <!-- 内部函数块 -->
+    <rect x="20" y="30" width="60" height="28" rx="6" fill="#3ddc84" opacity="0.9"/>
+    <text x="50" y="49" font-family="monospace" font-size="13" fill="#0d1117" text-anchor="middle" font-weight="bold">fn()</text>
+    <rect x="100" y="30" width="60" height="28" rx="6" fill="#00d4aa" opacity="0.7"/>
+    <text x="130" y="49" font-family="monospace" font-size="13" fill="#0d1117" text-anchor="middle" font-weight="bold">fn()</text>
+    <rect x="20" y="75" width="60" height="28" rx="6" fill="#2ecc71" opacity="0.6"/>
+    <text x="50" y="94" font-family="monospace" font-size="13" fill="#0d1117" text-anchor="middle" font-weight="bold">fn()</text>
+    <rect x="100" y="75" width="60" height="28" rx="6" fill="#27ae60" opacity="0.8"/>
+    <text x="130" y="94" font-family="monospace" font-size="13" fill="#0d1117" text-anchor="middle" font-weight="bold">fn()</text>
+  </g>
+
+  <!-- 中间连接箭头 -->
+  <g transform="translate(320, 245)">
+    <line x1="0" y1="0" x2="70" y2="0" stroke="url(#ai)" stroke-width="3" stroke-dasharray="8 4"/>
+    <polygon points="70,-8 86,0 70,8" fill="url(#ai)"/>
+    <text x="43" y="-18" font-family="sans-serif" font-size="13" fill="#8b5cf6" text-anchor="middle">@AppFunction</text>
+  </g>
+
+  <!-- 右侧：AI Agent 图标 -->
+  <g transform="translate(420, 180)">
+    <circle cx="70" cy="70" r="65" fill="none" stroke="url(#ai)" stroke-width="3" filter="url(#glow)"/>
+    <!-- AI 大脑/芯片图案 -->
+    <rect x="35" y="35" width="70" height="70" rx="12" fill="url(#ai)" opacity="0.15"/>
+    <text x="70" y="82" font-family="sans-serif" font-size="42" fill="url(#ai)" text-anchor="middle" font-weight="bold">AI</text>
+    <!-- 连接线 -->
+    <circle cx="70" cy="5" r="4" fill="#8b5cf6"/>
+    <line x1="70" y1="9" x2="70" y2="35" stroke="#8b5cf6" stroke-width="2" opacity="0.5"/>
+    <circle cx="5" cy="70" r="4" fill="#8b5cf6"/>
+    <line x1="9" y1="70" x2="35" y2="70" stroke="#8b5cf6" stroke-width="2" opacity="0.5"/>
+    <circle cx="135" cy="70" r="4" fill="#8b5cf6"/>
+    <line x1="105" y1="70" x2="131" y2="70" stroke="#8b5cf6" stroke-width="2" opacity="0.5"/>
+    <circle cx="70" cy="135" r="4" fill="#8b5cf6"/>
+    <line x1="70" y1="105" x2="70" y2="131" stroke="#8b5cf6" stroke-width="2" opacity="0.5"/>
+  </g>
+
+  <!-- 主标题区 -->
+  <text x="620" y="240" font-family="sans-serif" font-size="56" fill="#ffffff" font-weight="bold">AppFunctions</text>
+  <text x="620" y="300" font-family="sans-serif" font-size="30" fill="#3ddc84" font-weight="600">把 App 变成 AI 的智能体工具箱</text>
+
+  <!-- 底部标签 -->
+  <g transform="translate(620, 345)">
+    <rect x="0" y="0" width="150" height="34" rx="17" fill="none" stroke="#3ddc84" stroke-width="1.5"/>
+    <text x="75" y="22" font-family="sans-serif" font-size="15" fill="#3ddc84" text-anchor="middle" font-weight="600">Android 16</text>
+    <rect x="165" y="0" width="180" height="34" rx="17" fill="none" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="255" y="22" font-family="sans-serif" font-size="15" fill="#8b5cf6" text-anchor="middle" font-weight="600">移动端 MCP Server</text>
+  </g>
+
+  <!-- 底部署名 -->
+  <text x="620" y="560" font-family="sans-serif" font-size="16" fill="#6b7280">枢影Kernel · Focus On Android</text>
+
+  <!-- 底部装饰线 -->
+  <rect x="0" y="620" width="1200" height="10" fill="url(#accent)" opacity="0.8"/>
+</svg>

@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="深度对比 OpenAI Codex Harness（整体式、模型协同训练、生产级）与 DeepSeek Harness（微内核插件化、模型无关、成本低 30-100 倍）的架构哲学、扩展模型与选型决策，附完整对比矩阵。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比">
+<meta property="og:url" content="https://blog.shuying.me/2026/08/25/2026-08-25-codex-vs-deepseek-harness/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="深度对比 OpenAI Codex Harness（整体式、模型协同训练、生产级）与 DeepSeek Harness（微内核插件化、模型无关、成本低 30-100 倍）的架构哲学、扩展模型与选型决策，附完整对比矩阵。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/codex-vs-dsh-cover.png">
+<meta property="article:published_time" content="2026-08-25T06:00:00.000Z">
+<meta property="article:modified_time" content="2026-08-24T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="AI Agent">
+<meta property="article:tag" content="Codex Harness">
+<meta property="article:tag" content="DeepSeek Harness">
+<meta property="article:tag" content="架构对比">
+<meta property="article:tag" content="Cordis">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/codex-vs-dsh-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/08/25/2026-08-25-codex-vs-deepseek-harness/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/08/25/2026-08-25-codex-vs-deepseek-harness/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-08-25 14:00:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-08-25T14:00:00+08:00">2026-08-25</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">深度对比 OpenAI Codex Harness（整体式、模型协同训练、生产级）与 DeepSeek Harness（微内核插件化、模型无关、成本低 30-100 倍）的架构哲学、扩展模型与选型决策，附完整对比矩阵。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/codex-vs-dsh-cover.png" itemprop="contentUrl">
+        </div>
+        <p>2026 年，”Agent &#x3D; Model + Harness”这个公式已经成为行业共识——模型提供智能，harness 提供模型自身无法完成的一切：任务循环、工具访问、沙箱、审批门、状态管理。但同样的公式，可以推导出截然不同的工程哲学。</p>
+<p>8 月，两个重磅 harness 几乎同时开源。8 月 13 日，DeepSeek 发布 <a target="_blank" rel="noopener" href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>（MIT，Developer Preview），4 天内 GitHub star 突破 14 万（<a target="_blank" rel="noopener" href="https://github.com/deepseek-ai/deepseek-harness">GitHub API 查询</a>，访问于 2026-08-17）。8 月 20 日，OpenAI 开源 <a target="_blank" rel="noopener" href="https://github.com/openai/codex">Codex Harness</a>（Apache-2.0），这是驱动 Codex CLI、IDE 扩展、Web App 和 macOS App 的同一套运行时，已有超过 100 万开发者在使用（<a target="_blank" rel="noopener" href="https://aidigester.org/en/openai-codex-app-server-released-the-rise-of-general-purpose-agent-harness">AI Digester</a>，2026-02）。</p>
+<p>一个是经过大规模验证的工业级整体式战甲，一个是万物皆可拼装的微内核乐高积木。本文从架构哲学、模型关系、扩展模型、生产就绪度四个维度深度对比这两条路线。</p>
+<blockquote>
+<p><strong>Key Takeaways</strong></p>
+<ul>
+<li><strong>架构哲学根本对立</strong>：Codex Harness 是整体式架构（App Server + JSON-RPC 2.0，Thread&#x2F;Turn&#x2F;Item 协议），追求紧密集成与生产稳定性；DeepSeek Harness 基于 Cordis 微内核，”万物皆插件”——模型、工具、循环、沙箱、UI 全部可替换。</li>
+<li><strong>模型关系是核心分歧</strong>：Codex 的模型与 harness 协同训练，工具使用内化到模型行为中；DeepSeek Harness 模型无关，任何模型可通过插件接入，靠框架适配而非训练对齐。</li>
+<li><strong>成熟度与成本是互补取舍</strong>：Codex Harness 生产级稳定、100 万+开发者验证，但绑定 OpenAI 生态；DeepSeek Harness 是 Developer Preview（明确警告 breaking changes），但运行成本据分析低 30-100 倍。</li>
+<li><strong>选型不是二选一</strong>：DeepSeek Harness 甚至能把 Codex 或 Claude Code 作为子进程驱动——两条路线在实践中可以组合，而非互斥。</li>
+</ul>
+</blockquote>
+<h2 id="两个-Harness-的诞生背景与核心定位"><a href="#两个-Harness-的诞生背景与核心定位" class="headerlink" title="两个 Harness 的诞生背景与核心定位"></a>两个 Harness 的诞生背景与核心定位</h2><p>理解一个 harness 的设计选择，要先看它从哪里来。两者的出身决定了截然不同的工程优先级。</p>
+<p>OpenAI 的 Codex Harness 不是凭空设计的框架，而是从真实的 Codex 产品中抽离出来的。OpenAI 工程师 Celia Chen 在 2026 年 2 月的<a target="_blank" rel="noopener" href="https://openai.com/index/unlocking-the-codex-harness">官方博客</a>中解释：Codex 存在于 Web App、CLI、IDE 扩展、macOS App 多个界面，它们底层跑的是同一套 harness。2026 年 8 月的开源，是把这套经过大规模验证的运行时开放给开发者自建 Agent。OpenAI 开发者体验工程师 Gabriel Chua 在 2 月进一步澄清：Codex 的模型是<strong>在与 harness 共存的环境下训练的</strong>，工具使用、执行循环、验证逻辑被内化到了模型行为中。</p>
+<p>DeepSeek 走了另一条路。DeepSeek Harness 不是从某个成熟产品中剥离的，而是基于 <a target="_blank" rel="noopener" href="https://github.com/deepseek-ai/deepseek-harness">Cordis 元框架</a>从零构建的插件化运行时。<a target="_blank" rel="noopener" href="https://thenewstack.io/deepseek-harness-open-source-plugins">The New Stack</a>在 8 月 13 日的报道中指出，这是一个 Node.js 驱动的 harness，核心设计原则只有一句话：”Everything is a plugin”。模型适配器、工具注册表、Agent 循环本身都是可替换的插件。它的定位明确写在仓库里：Developer Preview，”THERE WILL BE COMPATIBILITY-BREAKING CHANGES”。</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 320" style="max-width:100%;height:auto;" role="img" aria-label="Codex Harness 与 DeepSeek Harness 诞生背景对比图">
+  <title>两个 Harness 的诞生背景与定位对比</title>
+  <desc>对比 Codex Harness（从产品抽离、生产级、模型协同训练）与 DeepSeek Harness（从零构建、Developer Preview、模型无关）的诞生背景。</desc>
+  <defs>
+    <linearGradient id="cg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10a37f"/><stop offset="100%" stop-color="#1a7f64"/>
+    </linearGradient>
+    <linearGradient id="dg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4d6bfe"/><stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <!-- Codex 侧 -->
+  <rect x="20" y="20" width="380" height="280" rx="12" fill="#0d1f2d" stroke="url(#cg)" stroke-width="2.5"/>
+  <text x="210" y="50" font-family="sans-serif" font-size="16" fill="#10a37f" text-anchor="middle" font-weight="bold">OpenAI Codex Harness</text>
+  <rect x="50" y="70" width="140" height="28" rx="14" fill="none" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="120" y="89" font-family="sans-serif" font-size="12" fill="#10a37f" text-anchor="middle">Apache-2.0</text>
+  <rect x="200" y="70" width="160" height="28" rx="14" fill="none" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="280" y="89" font-family="sans-serif" font-size="12" fill="#10a37f" text-anchor="middle">2026-08-20 开源</text>
+  <text x="50" y="130" font-family="sans-serif" font-size="13" fill="#ffffff" font-weight="600">出身：从 Codex 产品抽离</text>
+  <text x="50" y="155" font-family="sans-serif" font-size="11" fill="#9ca3af">• 驱动 Web/CLI/IDE/macOS 多界面</text>
+  <text x="50" y="175" font-family="sans-serif" font-size="11" fill="#9ca3af">• 模型与 harness 协同训练</text>
+  <text x="50" y="195" font-family="sans-serif" font-size="11" fill="#9ca3af">• 100万+ 开发者验证</text>
+  <text x="50" y="220" font-family="sans-serif" font-size="13" fill="#ffffff" font-weight="600">定位：生产级 Agent 运行时</text>
+  <text x="50" y="245" font-family="sans-serif" font-size="11" fill="#9ca3af">• 紧密集成，开箱即用</text>
+  <text x="50" y="265" font-family="sans-serif" font-size="11" fill="#9ca3af">• 绑定 OpenAI 模型生态</text>
+  <text x="50" y="285" font-family="sans-serif" font-size="11" fill="#9ca3af">• codex exec + SDK + app-server</text>
+
+  <!-- DeepSeek 侧 -->
+  <rect x="420" y="20" width="380" height="280" rx="12" fill="#0d1f2d" stroke="url(#dg)" stroke-width="2.5"/>
+  <text x="610" y="50" font-family="sans-serif" font-size="16" fill="#4d6bfe" text-anchor="middle" font-weight="bold">DeepSeek Harness</text>
+  <rect x="450" y="70" width="90" height="28" rx="14" fill="none" stroke="#4d6bfe" stroke-width="1.5"/>
+  <text x="495" y="89" font-family="sans-serif" font-size="12" fill="#4d6bfe" text-anchor="middle">MIT</text>
+  <rect x="550" y="70" width="160" height="28" rx="14" fill="none" stroke="#4d6bfe" stroke-width="1.5"/>
+  <text x="630" y="89" font-family="sans-serif" font-size="12" fill="#4d6bfe" text-anchor="middle">2026-08-13 发布</text>
+  <text x="450" y="130" font-family="sans-serif" font-size="13" fill="#ffffff" font-weight="600">出身：基于 Cordis 从零构建</text>
+  <text x="450" y="155" font-family="sans-serif" font-size="11" fill="#9ca3af">• Node.js 驱动，微内核架构</text>
+  <text x="450" y="175" font-family="sans-serif" font-size="11" fill="#9ca3af">• 模型无关，任意可替换</text>
+  <text x="450" y="195" font-family="sans-serif" font-size="11" fill="#9ca3af">• 4天破 14万 GitHub stars</text>
+  <text x="450" y="220" font-family="sans-serif" font-size="13" fill="#ffffff" font-weight="600">定位：Developer Preview</text>
+  <text x="450" y="245" font-family="sans-serif" font-size="11" fill="#9ca3af">• 万物皆插件，极致灵活</text>
+  <text x="450" y="265" font-family="sans-serif" font-size="11" fill="#9ca3af">• 明确警告 breaking changes</text>
+  <text x="450" y="285" font-family="sans-serif" font-size="11" fill="#9ca3af">• npx @deepseek-ai/dsh web</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">两个 Harness 的诞生背景对比：产品抽离 vs 框架构建</figcaption>
+</figure>
+
+<p>这个出身差异是理解后续所有架构分歧的钥匙：Codex Harness 优化的是”让模型在固定运行时里发挥最好”，DeepSeek Harness 优化的是”让运行时适配任何模型”。</p>
+<p>关于 <a href="https://blog.shuying.me/2026/08/22/ai-edge-gallery-architecture/">端侧 AI 应用架构参考</a> 的更多内容，可参阅此前的 AI Edge Gallery 架构解析一文。</p>
+<h2 id="架构哲学：整体式-vs-微内核插件化"><a href="#架构哲学：整体式-vs-微内核插件化" class="headerlink" title="架构哲学：整体式 vs 微内核插件化"></a>架构哲学：整体式 vs 微内核插件化</h2><p>两个 harness 最根本的分歧在于架构哲学：是造一套精密咬合的整体式战甲，还是搭一盒可以随意拼装的乐高积木？</p>
+<h3 id="Codex-Harness：精密的整体式战甲"><a href="#Codex-Harness：精密的整体式战甲" class="headerlink" title="Codex Harness：精密的整体式战甲"></a>Codex Harness：精密的整体式战甲</h3><p>Codex Harness 的架构核心是 <strong>App Server</strong>——一个基于 JSON-RPC 2.0 的双向通信服务器。根据 <a target="_blank" rel="noopener" href="https://openai.com/index/unlocking-the-codex-harness">OpenAI 官方文档</a>和<a target="_blank" rel="noopener" href="https://aidigester.org/en/openai-codex-app-server-released-the-rise-of-general-purpose-agent-harness">技术深度分析</a>，它用 Thread &#x2F; Turn &#x2F; Item 三层抽象管理对话状态：Thread 是一次会话，Turn 是一轮交互，Item 是其中的具体事件（工具调用、审批请求、流式输出）。</p>
+<p>这个设计的特征是<strong>紧密集成</strong>。App Server 统一管理认证、对话历史、审批流程、事件流，所有 Codex 界面（CLI、IDE、Web、macOS）都通过同一个 JSON-RPC 接口与它通信。模型推理、工具执行、沙箱隔离、循环终止这些核心逻辑被封装在 harness 内部，对开发者暴露的是结构化的 API 而非可替换的组件。</p>
+<p>Agent 循环本身是 harness 的核心：接收用户输入 → 构造 prompt → 调用模型 → 解析响应（通常是工具调用）→ 执行工具 → 把结果追加到 prompt → 再次调用模型，直到模型产出最终回复。这个循环不可替换，但经过高度优化——prompt 缓存实现线性而非二次性能、上下文窗口自动压缩、无状态请求处理满足 Zero Data Retention 合规。</p>
+<h3 id="DeepSeek-Harness：万物皆插件的乐高积木"><a href="#DeepSeek-Harness：万物皆插件的乐高积木" class="headerlink" title="DeepSeek Harness：万物皆插件的乐高积木"></a>DeepSeek Harness：万物皆插件的乐高积木</h3><p>DeepSeek Harness 基于 Cordis 元框架，采用微内核架构。InfoQ 在<a target="_blank" rel="noopener" href="https://www.infoq.com/news/2026/08/deep-seek-harness">报道</a>中描述：运行时组件作为隔离的、可互换的插件运行，而非单体系统模块。</p>
+<p>“万物皆插件”不是夸张。根据<a target="_blank" rel="noopener" href="https://deepseek-code.com/">官方文档</a>和多个技术分析，以下全部是可替换的插件：</p>
+<ul>
+<li><strong>模型适配器</strong>（Models）：DeepSeek V4、Claude、GPT、Qwen、任意 OpenAI 兼容端点</li>
+<li><strong>工具</strong>（Tools）：Shell、编辑器、搜索、浏览器、测试运行器、包管理器</li>
+<li><strong>技能</strong>（Skills）：可组合的任务能力单元</li>
+<li><strong>会话</strong>（Sessions）：以 append-only 事件日志存储，可追溯、恢复、fork、搜索、回放</li>
+<li><strong>沙箱</strong>（Sandbox）：执行隔离环境</li>
+<li><strong>存储</strong>（Storage）：持久化后端</li>
+<li><strong>循环</strong>（Loop）：Agent 执行循环本身</li>
+<li><strong>编排</strong>（Orchestration）：多 Agent 协调</li>
+<li><strong>UI</strong>：浏览器界面</li>
+</ul>
+<p>连 Agent 循环都能替换，这是与 Codex 最本质的区别。DeepSeek 的思路是：把”Agent 怎么运行”这个问题也交给开发者决定，框架只提供拼装机制。</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 360" style="max-width:100%;height:auto;" role="img" aria-label="整体式架构与微内核插件架构对比图">
+  <title>整体式 vs 微内核插件化架构对比</title>
+  <desc>左侧 Codex Harness 整体式架构：App Server 封装 Agent Loop、模型、工具、沙箱为一体化运行时，通过 JSON-RPC 对外暴露。右侧 DeepSeek Harness 微内核：Cordis 核心 + 可替换插件（Model/Tools/Loop/Sandbox/UI/Session 全部可插拔）。</desc>
+  <defs>
+    <linearGradient id="cg2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10a37f"/><stop offset="100%" stop-color="#1a7f64"/>
+    </linearGradient>
+    <linearGradient id="dg2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4d6bfe"/><stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <!-- Codex 整体式 -->
+  <rect x="20" y="20" width="380" height="320" rx="12" fill="#0d1f2d" stroke="url(#cg2)" stroke-width="2.5"/>
+  <text x="210" y="48" font-family="sans-serif" font-size="15" fill="#10a37f" text-anchor="middle" font-weight="bold">整体式：Codex Harness</text>
+  <!-- 外壳 -->
+  <rect x="50" y="65" width="320" height="250" rx="10" fill="none" stroke="#10a37f" stroke-width="2.5"/>
+  <text x="210" y="85" font-family="monospace" font-size="12" fill="#10a37f" text-anchor="middle">App Server (JSON-RPC 2.0)</text>
+  <!-- 内部组件紧密咬合 -->
+  <rect x="75" y="100" width="130" height="40" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="140" y="124" font-family="monospace" font-size="11" fill="#10a37f" text-anchor="middle">Agent Loop</text>
+  <rect x="215" y="100" width="130" height="40" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="280" y="124" font-family="monospace" font-size="11" fill="#10a37f" text-anchor="middle">Model (GPT-5.6)</text>
+  <rect x="75" y="155" width="130" height="40" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="140" y="179" font-family="monospace" font-size="11" fill="#10a37f" text-anchor="middle">Tools</text>
+  <rect x="215" y="155" width="130" height="40" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="280" y="179" font-family="monospace" font-size="11" fill="#10a37f" text-anchor="middle">Sandbox</text>
+  <rect x="75" y="210" width="270" height="40" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="210" y="234" font-family="monospace" font-size="11" fill="#10a37f" text-anchor="middle">Thread / Turn / Item 协议</text>
+  <rect x="75" y="265" width="270" height="35" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1" stroke-dasharray="4 2"/>
+  <text x="210" y="287" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">紧密集成，组件不可单独替换</text>
+
+  <!-- DeepSeek 微内核 -->
+  <rect x="420" y="20" width="380" height="320" rx="12" fill="#0d1f2d" stroke="url(#dg2)" stroke-width="2.5"/>
+  <text x="610" y="48" font-family="sans-serif" font-size="15" fill="#4d6bfe" text-anchor="middle" font-weight="bold">微内核：DeepSeek Harness</text>
+  <!-- Cordis 核心 -->
+  <rect x="540" y="65" width="140" height="45" rx="8" fill="#0d1117" stroke="#4d6bfe" stroke-width="2.5"/>
+  <text x="610" y="92" font-family="monospace" font-size="12" fill="#4d6bfe" text-anchor="middle">Cordis 核心</text>
+  <!-- 插件槽 -->
+  <rect x="450" y="130" width="95" height="45" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="497" y="150" font-family="monospace" font-size="10" fill="#4d6bfe" text-anchor="middle">Model 插件</text>
+  <text x="497" y="165" font-family="sans-serif" font-size="8" fill="#6b7280" text-anchor="middle">可替换</text>
+  <rect x="560" y="130" width="95" height="45" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="607" y="150" font-family="monospace" font-size="10" fill="#4d6bfe" text-anchor="middle">Loop 插件</text>
+  <text x="607" y="165" font-family="sans-serif" font-size="8" fill="#6b7280" text-anchor="middle">可替换</text>
+  <rect x="670" y="130" width="95" height="45" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="717" y="150" font-family="monospace" font-size="10" fill="#4d6bfe" text-anchor="middle">Tools 插件</text>
+  <text x="717" y="165" font-family="sans-serif" font-size="8" fill="#6b7280" text-anchor="middle">可替换</text>
+  <rect x="450" y="195" width="95" height="45" rx="6" fill="#0d1117" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="497" y="215" font-family="monospace" font-size="10" fill="#6366f1" text-anchor="middle">Sandbox</text>
+  <text x="497" y="230" font-family="sans-serif" font-size="8" fill="#6b7280" text-anchor="middle">可替换</text>
+  <rect x="560" y="195" width="95" height="45" rx="6" fill="#0d1117" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="607" y="215" font-family="monospace" font-size="10" fill="#6366f1" text-anchor="middle">UI 插件</text>
+  <text x="607" y="230" font-family="sans-serif" font-size="8" fill="#6b7280" text-anchor="middle">可替换</text>
+  <rect x="670" y="195" width="95" height="45" rx="6" fill="#0d1117" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="717" y="215" font-family="monospace" font-size="10" fill="#6366f1" text-anchor="middle">Session</text>
+  <text x="717" y="230" font-family="sans-serif" font-size="8" fill="#6b7280" text-anchor="middle">可替换</text>
+  <rect x="450" y="260" width="315" height="35" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1" stroke-dasharray="4 2"/>
+  <text x="607" y="282" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">万物皆插件，任意组合替换</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">整体式 vs 微内核插件化：组件是否可单独替换是核心分歧</figcaption>
+</figure>
+
+<h3 id="工程含义"><a href="#工程含义" class="headerlink" title="工程含义"></a>工程含义</h3><p>整体式的好处是<strong>一致性和可预测性</strong>。所有 Codex 界面行为一致，因为跑的是同一套循环逻辑；模型知道自己会被怎样调用，因为训练时就见过这个 harness。代价是<strong>灵活性受限</strong>——你不能把 Agent 循环换成另一种范式，也不能把 GPT-5.6 换成 Claude 而期望同等表现。</p>
+<p>微内核的好处是<strong>自由度和可组合性</strong>。你可以用 DeepSeek V4 做推理、用自定义循环做编排、用自己的沙箱做隔离。代价是<strong>一致性和稳定性</strong>——插件之间组合可能产生预期外的交互，Developer Preview 状态意味着 API 随时可能变。</p>
+<h2 id="模型关系：协同训练-vs-模型无关"><a href="#模型关系：协同训练-vs-模型无关" class="headerlink" title="模型关系：协同训练 vs 模型无关"></a>模型关系：协同训练 vs 模型无关</h2><p>架构哲学的分歧在”模型与 harness 的关系”上体现得最尖锐。这不仅是技术选择，更是产品战略。</p>
+<h3 id="Codex：模型与-Harness-协同训练"><a href="#Codex：模型与-Harness-协同训练" class="headerlink" title="Codex：模型与 Harness 协同训练"></a>Codex：模型与 Harness 协同训练</h3><p>OpenAI 的 Gabriel Chua 在 2026 年 2 月明确阐述了一个关键事实：Codex 的模型不是独立训练后”接入”harness 的，而是<strong>在与 harness 共存的环境下训练的</strong>。工具使用模式、执行循环结构、验证逻辑被内化到了模型的权重中。</p>
+<p>这意味着 Codex 模型”知道”自己会被怎样调用。当它决定调用一个工具时，它生成的调用格式与 harness 的解析逻辑是训练时对齐的，不是运行时适配的。这种协同训练减少了格式不匹配、工具误调用的概率——模型不是在”猜”harness 想要什么，而是”记得”。</p>
+<p>代价是<strong>模型锁定</strong>。Codex Harness 虽然开源了，但它的设计假设了一个与之协同训练的模型。把 Claude 或 DeepSeek V4 接入 Codex Harness 理论上可行，但模型不会享受协同训练带来的行为对齐优势——它需要靠 prompt 工程弥补训练时缺失的 harness 感知。</p>
+<h3 id="DeepSeek：模型无关，插件适配"><a href="#DeepSeek：模型无关，插件适配" class="headerlink" title="DeepSeek：模型无关，插件适配"></a>DeepSeek：模型无关，插件适配</h3><p>DeepSeek Harness 走了相反的路：harness 不假设任何特定模型。根据<a target="_blank" rel="noopener" href="https://deepseek-code.com/">官方文档</a>和<a target="_blank" rel="noopener" href="https://www.datacamp.com/tutorial/deepseek-harness">DataCamp 教程</a>，它通过 <code>llm-pi-ai</code> 插件支持 DeepSeek V4、Claude、GPT、Qwen、Bedrock、Vertex、Azure 以及任何 OpenAI 兼容端点。模型适配完全由插件处理，harness 核心不关心你用什么模型。</p>
+<p>这种设计的好处是<strong>选择自由</strong>。你可以用最便宜的 DeepSeek V4-Flash 做日常编码，用 Claude Opus 做复杂推理，用本地 Qwen 做隐私敏感任务——同一个 harness，换插件即可。根据<a target="_blank" rel="noopener" href="https://medium.com/data-science-in-your-pocket/what-is-deepseek-harness-4199d11a1235">分析</a>，DeepSeek V4-Flash 的运行成本约为竞品的 1&#x2F;30 到 1&#x2F;100（<a target="_blank" rel="noopener" href="https://medium.com/data-science-in-your-pocket/what-is-deepseek-harness-4199d11a1235">Medium 技术分析</a> 与 <a target="_blank" rel="noopener" href="https://www.atlascloud.ai/blog/tips/deepseek-harness-vs-opencode">Atlas Cloud 定价</a>交叉验证，2026-08）。</p>
+<p>代价是<strong>没有协同训练红利</strong>。模型需要靠 prompt 和插件 schema 理解 harness 的工具格式，而非训练时内化。这在当前模型能力下大多可行，但在边缘场景可能出现格式不一致。</p>
+<p><a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">关于 AI Agent 接入可验证开发流程</a> 的实践，可参阅此前的 Android CLI 文章，其中也涉及 Agent 与工具系统的协作模式。</p>
+<h2 id="扩展模型：SDK-三件套-vs-插件生态"><a href="#扩展模型：SDK-三件套-vs-插件生态" class="headerlink" title="扩展模型：SDK 三件套 vs 插件生态"></a>扩展模型：SDK 三件套 vs 插件生态</h2><p>开源 harness 的价值在于让开发者在其上构建自己的 Agent。两个 harness 提供了截然不同的扩展路径。</p>
+<h3 id="Codex：三种集成深度"><a href="#Codex：三种集成深度" class="headerlink" title="Codex：三种集成深度"></a>Codex：三种集成深度</h3><p>OpenAI 在 8 月 19 日发布 Codex 平台声明后，<a target="_blank" rel="noopener" href="https://www.explainx.ai/blog/codex-as-a-platform-open-agent-harness-august-2026">explainx.ai 的分析文章</a>中把 Codex 定位为平台，提供三种集成方式：</p>
+<ul>
+<li>**<code>codex exec</code>**：CLI 工具，最轻量集成。在终端运行 Codex Agent，适合脚本化任务和 CI&#x2F;CD 流水线。</li>
+<li><strong>Codex SDK</strong>：编程式集成，在应用代码中调用 Agent 能力。适合需要自定义流程控制的场景。</li>
+<li><strong>app-server</strong>：最深度集成，直接运行 Codex App Server，获得完整的 Thread&#x2F;Turn&#x2F;Item 协议、审批流、实时事件流。适合构建 IDE 扩展、自定义 Agent 平台、自动化代码审查系统。</li>
+</ul>
+<p>这三种方式是同一个 harness 的不同暴露层级，开发者按需要的控制粒度选择。app-server 的 JSON-RPC 协议让深度集成成为可能——你可以监听 Agent 的每一个工具调用事件、插入审批门、实时流式输出进度。</p>
+<h3 id="DeepSeek：插件生态与一键启动"><a href="#DeepSeek：插件生态与一键启动" class="headerlink" title="DeepSeek：插件生态与一键启动"></a>DeepSeek：插件生态与一键启动</h3><p>DeepSeek Harness 的扩展方式是<strong>写插件</strong>。任何能力——新的模型、工具、技能、沙箱、UI——都以插件形式接入。根据 <a target="_blank" rel="noopener" href="https://thenewstack.io/deepseek-harness-open-source-plugins">The New Stack</a>报道，发布数小时内就出现了大量社区插件。</p>
+<p>启动门槛极低：一条 <code>npx @deepseek-ai/dsh web</code> 命令即可启动带浏览器 UI 的本地 Agent。开发者可以在此基础上替换任意插件，或编写新插件扩展能力。会话状态以 append-only 事件日志存储，这意味着 Agent 的每一次工具调用、每一次 prompt、每一次 token 消耗都可追溯、回放、fork——这是 DeepSeek 把 R1 “开源思考过程”理念上移到 harness 层的体现。</p>
+<h3 id="一个关键差异：DeepSeek-能驱动-Codex"><a href="#一个关键差异：DeepSeek-能驱动-Codex" class="headerlink" title="一个关键差异：DeepSeek 能驱动 Codex"></a>一个关键差异：DeepSeek 能驱动 Codex</h3><p><a target="_blank" rel="noopener" href="https://winder.ai/ai-agent-harness-comparison">Winder.ai 的对比分析</a>指出了一个出人意料的事实：DeepSeek Harness 能把 Claude Code 或 Codex 作为子进程驱动。这意味着两条路线在实践中不是互斥的——你可以用 DeepSeek Harness 做编排层，把 Codex 或 Claude Code 作为底层执行 Agent。</p>
+<figure style="text-align:center;margin:2rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" style="max-width:100%;height:auto;" role="img" aria-label="扩展模型对比图">
+  <title>Codex SDK 三件套与 DeepSeek 插件生态扩展模型对比</title>
+  <desc>左侧 Codex 三种集成深度（codex exec / SDK / app-server），右侧 DeepSeek 插件生态（模型/工具/循环/UI/会话全部插件化），且 DeepSeek 可驱动 Codex 作为子进程。</desc>
+  <defs>
+    <linearGradient id="eg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10a37f"/><stop offset="100%" stop-color="#4d6bfe"/>
+    </linearGradient>
+  </defs>
+  <!-- Codex 扩展 -->
+  <rect x="20" y="20" width="330" height="240" rx="12" fill="#0d1f2d" stroke="#10a37f" stroke-width="2"/>
+  <text x="185" y="48" font-family="sans-serif" font-size="14" fill="#10a37f" text-anchor="middle" font-weight="bold">Codex：三种集成深度</text>
+  <rect x="50" y="65" width="270" height="50" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="65" y="86" font-family="monospace" font-size="12" fill="#10a37f">codex exec</text>
+  <text x="65" y="104" font-family="sans-serif" font-size="10" fill="#9ca3af">CLI 工具，最轻量，适合 CI/CD</text>
+  <rect x="50" y="125" width="270" height="50" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="65" y="146" font-family="monospace" font-size="12" fill="#10a37f">Codex SDK</text>
+  <text x="65" y="164" font-family="sans-serif" font-size="10" fill="#9ca3af">编程式集成，自定义流程控制</text>
+  <rect x="50" y="185" width="270" height="50" rx="6" fill="#0d1117" stroke="#10a37f" stroke-width="1.5"/>
+  <text x="65" y="206" font-family="monospace" font-size="12" fill="#10a37f">app-server</text>
+  <text x="65" y="224" font-family="sans-serif" font-size="10" fill="#9ca3af">JSON-RPC，最深集成，IDE 级</text>
+
+  <!-- DeepSeek 扩展 -->
+  <rect x="370" y="20" width="330" height="240" rx="12" fill="#0d1f2d" stroke="#4d6bfe" stroke-width="2"/>
+  <text x="535" y="48" font-family="sans-serif" font-size="14" fill="#4d6bfe" text-anchor="middle" font-weight="bold">DeepSeek：插件生态</text>
+  <rect x="400" y="65" width="135" height="35" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="467" y="88" font-family="monospace" font-size="11" fill="#4d6bfe" text-anchor="middle">Model 插件</text>
+  <rect x="545" y="65" width="135" height="35" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="612" y="88" font-family="monospace" font-size="11" fill="#4d6bfe" text-anchor="middle">Tool 插件</text>
+  <rect x="400" y="110" width="135" height="35" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="467" y="133" font-family="monospace" font-size="11" fill="#4d6bfe" text-anchor="middle">Loop 插件</text>
+  <rect x="545" y="110" width="135" height="35" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="612" y="133" font-family="monospace" font-size="11" fill="#4d6bfe" text-anchor="middle">Sandbox 插件</text>
+  <rect x="400" y="155" width="280" height="35" rx="6" fill="#0d1117" stroke="#4d6bfe" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="540" y="178" font-family="monospace" font-size="11" fill="#4d6bfe" text-anchor="middle">npx @deepseek-ai/dsh web（一键启动）</text>
+  <rect x="400" y="200" width="280" height="45" rx="6" fill="#0d1117" stroke="url(#eg)" stroke-width="2"/>
+  <text x="540" y="220" font-family="sans-serif" font-size="11" fill="#10a37f" text-anchor="middle" font-weight="bold">★ 可驱动 Codex / Claude Code 为子进程</text>
+  <text x="540" y="236" font-family="sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">编排层 + 底层执行 Agent 可组合</text>
+</svg>
+<figcaption style="font-size:13px;color:#6b7280;margin-top:8px;">扩展模型对比：层级式集成 vs 插件式组合</figcaption>
+</figure>
+
+<h2 id="生产就绪度与经济性"><a href="#生产就绪度与经济性" class="headerlink" title="生产就绪度与经济性"></a>生产就绪度与经济性</h2><p>架构再优雅，最终要看能不能用、用得起。两个 harness 在这两个维度上呈现互补的取舍。</p>
+<h3 id="成熟度对比"><a href="#成熟度对比" class="headerlink" title="成熟度对比"></a>成熟度对比</h3><p>Codex Harness 是<strong>生产级</strong>的。它驱动着 OpenAI 官方的 Codex 产品线，被超过 100 万开发者使用，经历了真实的大规模验证。Agent 循环的每一个环节——prompt 缓存、上下文压缩、无状态请求、多轮一致性——都经过生产打磨。</p>
+<p>DeepSeek Harness 是 <strong>Developer Preview</strong>。仓库 README 明确警告会有兼容性破坏性变更。<a target="_blank" rel="noopener" href="https://xcloud.host/deepseek-harness-vs-opencode">xcloud.host 的对比</a>给出的判断是：”OpenCode 是 2026 年更安全的日常工具；DeepSeek Harness 是更具架构意义的方案。如果你每天写代码需要稳定产出，先用 OpenCode；如果你在构建别人要运行的 Agent 基础设施，dsh 是有趣问题所在的地方。”</p>
+<h3 id="经济性对比"><a href="#经济性对比" class="headerlink" title="经济性对比"></a>经济性对比</h3><p>经济性是 DeepSeek 的核心攻击点。根据<a target="_blank" rel="noopener" href="https://medium.com/data-science-in-your-pocket/what-is-deepseek-harness-4199d11a1235">分析</a>，DeepSeek V4-Flash 配合 DeepSeek Harness 的运行成本约为竞品的 1&#x2F;30 到 1&#x2F;100。具体来说，<a target="_blank" rel="noopener" href="https://www.atlascloud.ai/blog/tips/deepseek-harness-vs-opencode">Atlas Cloud 的定价</a>显示 DeepSeek V4-Flash 为每百万输入 token $0.14、输出 token $0.28，对比 GPT-5.6 或 Claude Opus 的定价，成本差异显著。</p>
+<p>这对于需要大规模运行 Agent 的场景——CI&#x2F;CD 中的自动代码审查、批量 issue 分诊、大规模重构——是决定性的。在这些场景下，Agent 可能需要运行成千上万次，30 倍的成本差异意味着能用和用不起的区别。</p>
+<p>下面的视频是 100 小时实测对比，直观展示了 DeepSeek Harness 在速度、质量、成本上的实际表现：</p>
+<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;margin:1.5rem 0;border-radius:8px;">
+<iframe src="https://www.youtube.com/embed/UsfCe5fJK6A" title="100 Hours Testing Deepseek Harness vs. Claude Code" loading="lazy" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" allowfullscreen></iframe>
+</div>
+<noscript>视频：100 Hours Testing Deepseek Harness vs. Claude Code — 实测对比速度、质量、成本与可定制性 (https://www.youtube.com/watch?v=UsfCe5fJK6A)</noscript>
+
+<h2 id="选型决策：什么时候用哪个"><a href="#选型决策：什么时候用哪个" class="headerlink" title="选型决策：什么时候用哪个"></a>选型决策：什么时候用哪个</h2><p>没有绝对的好坏，只有场景匹配。以下是基于前文分析的选型矩阵。</p>
+<p><strong>选 Codex Harness 的场景</strong>：</p>
+<ul>
+<li>你的团队已经在 OpenAI 生态内，使用 GPT-5.6 系列模型</li>
+<li>需要生产级稳定性，不能容忍 breaking changes</li>
+<li>要构建 IDE 扩展或深度集成的 Agent 平台（用 app-server）</li>
+<li>重视模型与运行时的行为对齐（协同训练红利）</li>
+<li>预算不是首要约束</li>
+</ul>
+<p><strong>选 DeepSeek Harness 的场景</strong>：</p>
+<ul>
+<li>需要极致成本控制，大规模运行 Agent（30-100 倍成本优势）</li>
+<li>要用非 OpenAI 模型（Claude、DeepSeek V4、Qwen、本地模型）</li>
+<li>要构建自己的 Agent 基础设施，需要替换 Agent 循环或沙箱</li>
+<li>能接受 Developer Preview 的不稳定性</li>
+<li>要把多个 harness 组合使用（DeepSeek 做编排，Codex&#x2F;Claude 做执行）</li>
+</ul>
+<p><strong>混合策略</strong>：根据 Winder.ai 的分析，DeepSeek Harness 能驱动 Codex 和 Claude Code 作为子进程。这意味着你可以用 DeepSeek Harness 做顶层编排（利用其插件化优势和低成本模型做任务分发），把 Codex 或 Claude Code 作为底层执行 Agent（利用其协同训练红利和生产稳定性）。这种组合在实践中可能是最优解——用乐高积木搭框架，在关键节点嵌入工业战甲。</p>
+<p>关于 <a href="https://blog.shuying.me/2026/08/22/android16-appfunctions-framework/">Android 端侧 AI 与 Agent 工具化框架</a> 的更多内容，可参阅 AppFunctions 框架一文。</p>
+<h2 id="常见问题"><a href="#常见问题" class="headerlink" title="常见问题"></a>常见问题</h2><h3 id="Codex-Harness-和-DeepSeek-Harness-哪个更适合生产环境？"><a href="#Codex-Harness-和-DeepSeek-Harness-哪个更适合生产环境？" class="headerlink" title="Codex Harness 和 DeepSeek Harness 哪个更适合生产环境？"></a>Codex Harness 和 DeepSeek Harness 哪个更适合生产环境？</h3><p>当前阶段，Codex Harness 更适合生产环境。它是从 OpenAI 官方 Codex 产品中抽离的成熟运行时，被 100 万+开发者验证，Agent 循环的每个环节都经过生产打磨。DeepSeek Harness 仍是 Developer Preview，明确警告会有 breaking changes，适合实验和插件开发，不建议 pin 到生产系统。</p>
+<h3 id="两个-Harness-能用同一个模型吗？"><a href="#两个-Harness-能用同一个模型吗？" class="headerlink" title="两个 Harness 能用同一个模型吗？"></a>两个 Harness 能用同一个模型吗？</h3><p>DeepSeek Harness 模型无关，可以接入 GPT、Claude、DeepSeek V4 等任意模型。Codex Harness 设计上与 OpenAI 模型协同训练，虽然技术上可能接入其他模型，但不会享受协同训练带来的行为对齐优势。两个 harness 都支持 OpenAI 兼容 API 端点。</p>
+<h3 id="DeepSeek-Harness-真的比-Codex-便宜-30-100-倍吗？"><a href="#DeepSeek-Harness-真的比-Codex-便宜-30-100-倍吗？" class="headerlink" title="DeepSeek Harness 真的比 Codex 便宜 30-100 倍吗？"></a>DeepSeek Harness 真的比 Codex 便宜 30-100 倍吗？</h3><p>成本差异主要来自模型而非 harness 本身。DeepSeek V4-Flash 定价约每百万输入 token $0.14，对比 GPT-5.6 或 Claude Opus 的高定价，在需要大规模运行 Agent 的场景下成本差异可达 30-100 倍。但若两个 harness 跑同一个模型（如都接 DeepSeek V4-Flash），成本差异不大。更多 <a href="https://blog.shuying.me/2026/08/11/android-cli-android-skills-best-practice/">Agent 工具化实践</a> 可参阅相关文章。</p>
+<h3 id="“万物皆插件”和”SDK-三件套”哪个扩展性更强？"><a href="#“万物皆插件”和”SDK-三件套”哪个扩展性更强？" class="headerlink" title="“万物皆插件”和”SDK 三件套”哪个扩展性更强？"></a>“万物皆插件”和”SDK 三件套”哪个扩展性更强？</h3><p>从理论上说，DeepSeek 的插件化扩展性更强——连 Agent 循环都能替换。Codex 的 SDK 三件套提供的是层级式的集成深度，组件本身不可替换但暴露了完整的控制接口。实践中，Codex 的方式更可预测（组件行为一致），DeepSeek 的方式更灵活（但组合复杂度更高）。</p>
+<h2 id="结论"><a href="#结论" class="headerlink" title="结论"></a>结论</h2><p>工业战甲和乐高积木，不是谁替代谁的关系，而是两种截然不同的工程哲学在同一个公式下的展开。</p>
+<p>回顾要点：</p>
+<ul>
+<li><strong>架构哲学</strong>：Codex 整体式（App Server + JSON-RPC，紧密集成，生产稳定）；DeepSeek 微内核（Cordis + 万物皆插件，极致灵活，preview 状态）。</li>
+<li><strong>模型关系</strong>：Codex 协同训练（行为对齐，模型锁定）；DeepSeek 模型无关（选择自由，无训练红利）。</li>
+<li><strong>成熟度与成本</strong>：Codex 生产级 + 100 万用户 + 高成本；DeepSeek preview + 14 万 stars + 低成本 30-100 倍。</li>
+<li><strong>组合可能</strong>：DeepSeek 可驱动 Codex&#x2F;Claude Code 为子进程，两条路线在实践中可组合。</li>
+</ul>
+<p>对于要在 Agent 基础设施上做技术决策的团队，判断标准其实很简单：如果优先级是稳定和开箱即用，选 Codex；如果优先级是成本和灵活性，选 DeepSeek；如果两者都要，用 DeepSeek 做编排层、Codex 做执行层。harness 层的竞争才刚开始，这两条路线会各自演进，也可能在某个交汇点融合——但理解它们今天的设计取舍，是做出正确选型的基础。</p>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比",
+  "description": "深度对比 OpenAI Codex Harness（整体式、模型协同训练、生产级）与 DeepSeek Harness（微内核插件化、模型无关、成本低 30-100 倍）的架构哲学、扩展模型与选型决策，附完整对比矩阵。",
+  "datePublished": "2026-08-25",
+  "dateModified": "2026-08-25",
+  "author": {
+    "@type": "Person",
+    "name": "枢影",
+    "url": "https://blog.shuying.me/about/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "枢影Kernel",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://blog.shuying.me/images/avatar.png"
+    }
+  },
+  "image": "https://blog.shuying.me/images/codex-vs-dsh-cover.png",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://blog.shuying.me/2026/08/25/codex-vs-deepseek-harness/"
+  },
+  "keywords": ["AI Agent", "Codex Harness", "DeepSeek Harness", "架构对比", "Cordis"]
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Codex Harness 和 DeepSeek Harness 哪个更适合生产环境？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "当前阶段，Codex Harness 更适合生产环境。它是从 OpenAI 官方 Codex 产品中抽离的成熟运行时，被超过 100 万开发者验证。DeepSeek Harness 仍是 Developer Preview，明确警告会有 breaking changes，适合实验和插件开发。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "两个 Harness 能用同一个模型吗？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "DeepSeek Harness 模型无关，可接入 GPT、Claude、DeepSeek V4 等任意模型。Codex Harness 设计上与 OpenAI 模型协同训练，技术上可能接入其他模型但不享受协同训练红利。两者都支持 OpenAI 兼容 API 端点。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "DeepSeek Harness 真的比 Codex 便宜 30-100 倍吗？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "成本差异主要来自模型而非 harness。DeepSeek V4-Flash 定价约每百万输入 token $0.14，对比 GPT 或 Claude，大规模运行场景下成本差异可达 30-100 倍。若两个 harness 跑同一模型，成本差异不大。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "万物皆插件和 SDK 三件套哪个扩展性更强？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "理论上 DeepSeek 插件化扩展性更强，连 Agent 循环都能替换。Codex SDK 三件套提供层级式集成深度，组件不可替换但控制接口完整。实践中 Codex 更可预测，DeepSeek 更灵活但组合复杂度更高。"
+      }
+    }
+  ]
+}
+</script>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/08/25/2026-08-25-codex-vs-deepseek-harness/" title="工业战甲 vs 乐高积木：OpenAI Codex Harness 与 DeepSeek Harness 架构路线深度对比">https://blog.shuying.me/2026/08/25/2026-08-25-codex-vs-deepseek-harness/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/AI-Agent/" rel="tag"># AI Agent</a>
+              <a href="/tags/Codex-Harness/" rel="tag"># Codex Harness</a>
+              <a href="/tags/DeepSeek-Harness/" rel="tag"># DeepSeek Harness</a>
+              <a href="/tags/%E6%9E%B6%E6%9E%84%E5%AF%B9%E6%AF%94/" rel="tag"># 架构对比</a>
+              <a href="/tags/Cordis/" rel="tag"># Cordis</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/08/22/2026-08-22-ai-edge-gallery-architecture/" rel="prev" title="Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现">
+      <i class="fa fa-chevron-left"></i> Google AI Edge Gallery 架构深度解析：一个生产级端侧 AI 应用的完整参考实现
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/09/05/2026-09-05-ai-unit-test-pyramid/" rel="next" title="AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地">
+      AI 生成的单元测试：70% 业务逻辑 + 20% 集成 + 10% UI 的测试金字塔怎么落地 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%A4%E4%B8%AA-Harness-%E7%9A%84%E8%AF%9E%E7%94%9F%E8%83%8C%E6%99%AF%E4%B8%8E%E6%A0%B8%E5%BF%83%E5%AE%9A%E4%BD%8D"><span class="nav-number">1.</span> <span class="nav-text">两个 Harness 的诞生背景与核心定位</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9E%B6%E6%9E%84%E5%93%B2%E5%AD%A6%EF%BC%9A%E6%95%B4%E4%BD%93%E5%BC%8F-vs-%E5%BE%AE%E5%86%85%E6%A0%B8%E6%8F%92%E4%BB%B6%E5%8C%96"><span class="nav-number">2.</span> <span class="nav-text">架构哲学：整体式 vs 微内核插件化</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Codex-Harness%EF%BC%9A%E7%B2%BE%E5%AF%86%E7%9A%84%E6%95%B4%E4%BD%93%E5%BC%8F%E6%88%98%E7%94%B2"><span class="nav-number">2.1.</span> <span class="nav-text">Codex Harness：精密的整体式战甲</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#DeepSeek-Harness%EF%BC%9A%E4%B8%87%E7%89%A9%E7%9A%86%E6%8F%92%E4%BB%B6%E7%9A%84%E4%B9%90%E9%AB%98%E7%A7%AF%E6%9C%A8"><span class="nav-number">2.2.</span> <span class="nav-text">DeepSeek Harness：万物皆插件的乐高积木</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%B7%A5%E7%A8%8B%E5%90%AB%E4%B9%89"><span class="nav-number">2.3.</span> <span class="nav-text">工程含义</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E5%85%B3%E7%B3%BB%EF%BC%9A%E5%8D%8F%E5%90%8C%E8%AE%AD%E7%BB%83-vs-%E6%A8%A1%E5%9E%8B%E6%97%A0%E5%85%B3"><span class="nav-number">3.</span> <span class="nav-text">模型关系：协同训练 vs 模型无关</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Codex%EF%BC%9A%E6%A8%A1%E5%9E%8B%E4%B8%8E-Harness-%E5%8D%8F%E5%90%8C%E8%AE%AD%E7%BB%83"><span class="nav-number">3.1.</span> <span class="nav-text">Codex：模型与 Harness 协同训练</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#DeepSeek%EF%BC%9A%E6%A8%A1%E5%9E%8B%E6%97%A0%E5%85%B3%EF%BC%8C%E6%8F%92%E4%BB%B6%E9%80%82%E9%85%8D"><span class="nav-number">3.2.</span> <span class="nav-text">DeepSeek：模型无关，插件适配</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%89%A9%E5%B1%95%E6%A8%A1%E5%9E%8B%EF%BC%9ASDK-%E4%B8%89%E4%BB%B6%E5%A5%97-vs-%E6%8F%92%E4%BB%B6%E7%94%9F%E6%80%81"><span class="nav-number">4.</span> <span class="nav-text">扩展模型：SDK 三件套 vs 插件生态</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Codex%EF%BC%9A%E4%B8%89%E7%A7%8D%E9%9B%86%E6%88%90%E6%B7%B1%E5%BA%A6"><span class="nav-number">4.1.</span> <span class="nav-text">Codex：三种集成深度</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#DeepSeek%EF%BC%9A%E6%8F%92%E4%BB%B6%E7%94%9F%E6%80%81%E4%B8%8E%E4%B8%80%E9%94%AE%E5%90%AF%E5%8A%A8"><span class="nav-number">4.2.</span> <span class="nav-text">DeepSeek：插件生态与一键启动</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E4%B8%AA%E5%85%B3%E9%94%AE%E5%B7%AE%E5%BC%82%EF%BC%9ADeepSeek-%E8%83%BD%E9%A9%B1%E5%8A%A8-Codex"><span class="nav-number">4.3.</span> <span class="nav-text">一个关键差异：DeepSeek 能驱动 Codex</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%94%9F%E4%BA%A7%E5%B0%B1%E7%BB%AA%E5%BA%A6%E4%B8%8E%E7%BB%8F%E6%B5%8E%E6%80%A7"><span class="nav-number">5.</span> <span class="nav-text">生产就绪度与经济性</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%88%90%E7%86%9F%E5%BA%A6%E5%AF%B9%E6%AF%94"><span class="nav-number">5.1.</span> <span class="nav-text">成熟度对比</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%8F%E6%B5%8E%E6%80%A7%E5%AF%B9%E6%AF%94"><span class="nav-number">5.2.</span> <span class="nav-text">经济性对比</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%80%89%E5%9E%8B%E5%86%B3%E7%AD%96%EF%BC%9A%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E7%94%A8%E5%93%AA%E4%B8%AA"><span class="nav-number">6.</span> <span class="nav-text">选型决策：什么时候用哪个</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98"><span class="nav-number">7.</span> <span class="nav-text">常见问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Codex-Harness-%E5%92%8C-DeepSeek-Harness-%E5%93%AA%E4%B8%AA%E6%9B%B4%E9%80%82%E5%90%88%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%EF%BC%9F"><span class="nav-number">7.1.</span> <span class="nav-text">Codex Harness 和 DeepSeek Harness 哪个更适合生产环境？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%A4%E4%B8%AA-Harness-%E8%83%BD%E7%94%A8%E5%90%8C%E4%B8%80%E4%B8%AA%E6%A8%A1%E5%9E%8B%E5%90%97%EF%BC%9F"><span class="nav-number">7.2.</span> <span class="nav-text">两个 Harness 能用同一个模型吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#DeepSeek-Harness-%E7%9C%9F%E7%9A%84%E6%AF%94-Codex-%E4%BE%BF%E5%AE%9C-30-100-%E5%80%8D%E5%90%97%EF%BC%9F"><span class="nav-number">7.3.</span> <span class="nav-text">DeepSeek Harness 真的比 Codex 便宜 30-100 倍吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E2%80%9C%E4%B8%87%E7%89%A9%E7%9A%86%E6%8F%92%E4%BB%B6%E2%80%9D%E5%92%8C%E2%80%9DSDK-%E4%B8%89%E4%BB%B6%E5%A5%97%E2%80%9D%E5%93%AA%E4%B8%AA%E6%89%A9%E5%B1%95%E6%80%A7%E6%9B%B4%E5%BC%BA%EF%BC%9F"><span class="nav-number">7.4.</span> <span class="nav-text">“万物皆插件”和”SDK 三件套”哪个扩展性更强？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-number">8.</span> <span class="nav-text">结论</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">36</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
