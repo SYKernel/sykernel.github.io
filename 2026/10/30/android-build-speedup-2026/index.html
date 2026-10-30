@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="Gradle 9.0 起 Configuration Cache 默认启用，AGP 9.0 把 KSP 拉到 2.2.10-2.0.2——提速从可选项变成升级必答题。本文拆解迁移坑、KAPT 清理顺序与 CI 三层缓存写法，数字均标注官方出处。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="2026 版 Android 构建提速：Configuration Cache、KSP2 与构建扫描实战">
+<meta property="og:url" content="https://blog.shuying.me/2026/10/30/android-build-speedup-2026/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="Gradle 9.0 起 Configuration Cache 默认启用，AGP 9.0 把 KSP 拉到 2.2.10-2.0.2——提速从可选项变成升级必答题。本文拆解迁移坑、KAPT 清理顺序与 CI 三层缓存写法，数字均标注官方出处。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/android-build-speedup-2026-cover.png">
+<meta property="article:published_time" content="2026-10-30T08:30:00.000Z">
+<meta property="article:modified_time" content="2026-10-29T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="CI&#x2F;CD">
+<meta property="article:tag" content="Gradle">
+<meta property="article:tag" content="Android">
+<meta property="article:tag" content="构建提速">
+<meta property="article:tag" content="Configuration Cache">
+<meta property="article:tag" content="KSP">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/android-build-speedup-2026-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/10/30/android-build-speedup-2026/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>2026 版 Android 构建提速：Configuration Cache、KSP2 与构建扫描实战 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/10/30/android-build-speedup-2026/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          2026 版 Android 构建提速：Configuration Cache、KSP2 与构建扫描实战
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-10-30 16:30:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-10-30T16:30:00+08:00">2026-10-30</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Android%E6%95%88%E7%8E%87%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">Android效率工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">Gradle 9.0 起 Configuration Cache 默认启用，AGP 9.0 把 KSP 拉到 2.2.10-2.0.2——提速从可选项变成升级必答题。本文拆解迁移坑、KAPT 清理顺序与 CI 三层缓存写法，数字均标注官方出处。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/android-build-speedup-2026-cover.png" itemprop="contentUrl">
+        </div>
+        <p>2016 年 5 月，我们在《Android Gradle 最佳实践》系列里连载到第 8 篇与第 9 篇（<a href="https://blog.shuying.me/2016/05/02/2016-05-02-Android%20Gradle%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E7%B3%BB%E5%88%978/">系列 8</a>、<a href="https://blog.shuying.me/2016/05/10/2016-05-10-Android%20Gradle%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E7%B3%BB%E5%88%979/">系列 9</a>）——那是 Gradle 2.x 的年代，”构建提速”聊的还是 daemon、并行与增量编译这些基础设施。十年过去，工具链的进化把话题的根基换掉了：Gradle 9.0（2025-07-31 发布）起 Configuration Cache 默认启用（Gradle 官方 release notes，<a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/release-notes.html">docs.gradle.org</a>，2025-07-31）；AGP 9.0 又把运行时依赖的 KGP 拉到 2.2.10，项目里低于 2.2.10-2.0.2 的 KSP 插件会被自动升级（AGP 9.0 官方 release notes，<a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/agp-9-0-0-release-notes">developer.android.com</a>，9.0.0 于 2025 年末发布、9.0.1 于 2026-01 发布）。”要不要打开提速开关”这个十年老问题，在 2026 年变成了”能不能活着完成升级”。</p>
+<p>本文的写法与前几篇一致：数据全部来自 Gradle、Google、JetBrains 的官方文档与一手工程报告，口径与样本量逐一标注；个别未能全文核对的数字（部分官方博客页面为 JS 动态渲染，本环境抓不到全文）会明确标出”建议人工复核”，不把存疑数字写成确证事实。我自己的贡献是把这些散落的官方结论按新基线重新排序：版本演进先说清楚，再依次过 Configuration Cache、KSP2 与 KAPT 清理、构建扫描、CI 缓存四件事，每件给可执行的结论。</p>
+<blockquote><p><strong>Key Takeaways</strong></p><ul>
+<li>2026 年的构建提速是新基线问题：Gradle 9.0 起 Configuration Cache 默认启用、全部插件要求兼容（2025-07-31），AGP 9.0 又把 KSP 自动拉到 2.2.10-2.0.2——"打开关"变成了"过升级关"，迁移顺序要按新基线重排。</li>
+<li>Configuration Cache 的收益机理是跳过整个配置阶段，AGP 8.1（2023-07）起 fully supports；迁移坑高度模式化——执行期持有 Project、File、脚本闭包三类，解法是改注入 Property 与服务，诊断入口是 <code>--configuration-cache-problems=report</code>。</li>
+<li>KSP2 绕开 KAPT"先生成 Java stub 再交给 javac"的两遍解析，官方口径最高快 2 倍（up to，非均值）；Google 一手案例：Maps 增量 -15%、Play Store clean -22%/增量 -24%（2024-12 官方博客，发布前建议复核原文）。</li>
+<li>先量再修：<code>--profile</code> 与 Build Scan 分清配置/执行占比，Build Analyzer 给出 GC 加堆（占比 &gt;15% 时按 4/6/8 GB 逐档试）与 config cache 预检，Gradle Profiler 做 A/B 基准；经验上增量构建里配置阶段占比会明显放大，这正是 config cache 的收益场景。</li>
+<li>CI 缓存三层分开配置：build cache（local + remote，注意 relocatability）、setup-gradle 的 Gradle User Home 缓存（matrix 下只允许一个 job 写、注意 10GB 配额）、configuration cache 条目用 <code>cache-encryption-key</code> 加密落盘。</li>
+</ul></blockquote>
+
+<h2 id="新基线：默认开启的-Configuration-Cache-与被-AGP-绑死的版本线"><a href="#新基线：默认开启的-Configuration-Cache-与被-AGP-绑死的版本线" class="headerlink" title="新基线：默认开启的 Configuration Cache 与被 AGP 绑死的版本线"></a>新基线：默认开启的 Configuration Cache 与被 AGP 绑死的版本线</h2><p>Gradle 9.0 带来的不是又一个优化选项，而是默认行为的改变。三条官方事实：其一，Configuration Cache 默认启用（Gradle 官方 release notes，<a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/release-notes.html">docs.gradle.org</a>，2025-07-31）；其二，要求 Android 构建使用 AGP 8.0 以上、全部插件兼容 configuration cache（Gradle 9.0 Configuration Cache 文档，<a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache.html">docs.gradle.org</a>，2025-07）；其三，Windows 平台上 task 执行比 8.14 快 5–10%（同 release notes，官方数字，平台限定 Windows）。默认化不是拍脑袋：它在官方 roadmap 里的状态是 Shipped（<a target="_blank" rel="noopener" href="https://roadmap.gradle.org/entity/2hkefljvwagcpeicvkksp9qii/">roadmap.gradle.org</a>，2026-10-30 核对），而且 Gradle 8.11 起连 <code>gradle init</code> 生成的新项目都在根 <code>gradle.properties</code> 里默认写入 <code>org.gradle.configuration-cache=true</code>（Gradle 8.11 release notes，<a target="_blank" rel="noopener" href="https://docs.gradle.org/8.11/release-notes.html">docs.gradle.org</a>，2026-10-30 核对）——新项目已经出生在 config cache 的世界里了。</p>
+<p>AGP 侧的联动同样硬。时间线：AGP 8.0 对 configuration cache 只有部分支持，AGP 8.1（2023-07）起官方宣布 fully supports（AGP 8.1 release notes，<a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/past-releases/agp-8-1-0-release-notes">developer.android.com</a>，2023-07）；AGP 9.0 最低要求 Gradle 9.1.0（AGP 兼容矩阵，<a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/gradle-plugin">developer.android.com</a>，持续更新），并内置了 Kotlin 支持——旧路径由 <code>com.android.legacy-kotlin-support</code> 插件承接，迁移或 opt-out 二选一（AGP 9.0 release notes，<a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/agp-9-0-0-release-notes">developer.android.com</a>）；到 2026 年 9&#x2F;10 月的 AGP 9.5.0，最低 Gradle 已抬到 9.6.0、JDK 17（AGP 9.5.0 release notes，<a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/agp-9-5-0-release-notes">developer.android.com</a>，2026）。也就是说，想留在”不开 config cache”的老世界，你得同时放弃 Gradle 9 与 AGP 9 两条线——对大多数团队这不现实。</p>
+<p>底层性能在同步爬坡。Gradle 8.11 重做了并行任务执行调度：worker 线程完成任务后立即领取下一个任务，不再等待同一 project 的全部任务完成（Gradle 8.11 release notes，<a target="_blank" rel="noopener" href="https://docs.gradle.org/8.11/release-notes.html">docs.gradle.org</a>，2024-Q4，精确日期未核实）；Gradle 9.1（2025-11）在 Windows 上默认启用 file system watching，构建延迟最高改善约 10%（Gradle 9.1 release notes，<a target="_blank" rel="noopener" href="https://docs.gradle.org/9.1.0/release-notes.html">docs.gradle.org</a>，2025-11）。Kotlin 侧，Kotlin 2.2.0 的 KGP 改进了 configuration cache 的序列化，最高带来 8% 构建提速（JetBrains 官方博客，<a target="_blank" rel="noopener" href="https://blog.jetbrains.com/kotlin/2025/06/kotlin-2-2-0-released">blog.jetbrains.com</a>，2025-06-23，未注明样本项目规模）。JetBrains 用 Develocity 对同一构建场景做过跨版本对比：Gradle 8.12 约 3.37 秒、9.0 约 2.63 秒（InfoQ 报道引述，<a target="_blank" rel="noopener" href="https://www.infoq.com/news/2025/08/gradle-9-released/">infoq.com</a>，2025-08）——单一小型构建场景，只作量级参考，别拿它外推自己的项目。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 420" style="max-width:100%;height:auto;" role="img" aria-label="2023 至 2026 构建工具链关键版本时间线：Gradle 8.1 转正 Configuration Cache，Kotlin 2.0.20 捆绑 KSP2，Kotlin 2.2.0 带来 KGP 序列化提速，Gradle 9.0 默认启用 Configuration Cache，Gradle 9.1 启用文件监视，AGP 9.0 把 KSP 自动升级到 2.2.10-2.0.2">
+  <title>2023–2026 构建工具链关键版本时间线</title>
+  <desc>横向时间线，上轨为 Gradle 与 Kotlin 版本节点，下轨为 AGP 与 Kotlin 版本节点。高亮两个 2026 关键转折：Gradle 9.0（2025-07-31）默认启用 Configuration Cache；AGP 9.0（2025 末至 2026-01）把项目 KSP 自动升级到 2.2.10-2.0.2。</desc>
+  <rect x="0" y="0" width="860" height="420" fill="#0d1117" rx="10"></rect>
+  <!-- 时间轴 -->
+  <line x1="40" y1="210" x2="830" y2="210" stroke="#4b5563" stroke-width="1.5" marker-end="url(#tlarrow)"></line>
+  <!-- 节点 1：Gradle 8.1（上） -->
+  <line x1="70" y1="210" x2="70" y2="145" stroke="#374151" stroke-width="1.5"></line>
+  <circle cx="70" cy="210" r="5" fill="#00d4aa"></circle>
+  <text x="70" y="92" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle" font-weight="bold">Gradle 8.1</text>
+  <text x="70" y="110" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">CC 转正 stable</text>
+  <text x="70" y="126" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="middle">2023</text>
+  <!-- 节点 2：AGP 8.1（下） -->
+  <line x1="170" y1="210" x2="170" y2="275" stroke="#374151" stroke-width="1.5"></line>
+  <circle cx="170" cy="210" r="5" fill="#4285f4"></circle>
+  <text x="170" y="300" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle" font-weight="bold">AGP 8.1</text>
+  <text x="170" y="318" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">fully supports CC</text>
+  <text x="170" y="334" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="middle">2023-07</text>
+  <!-- 节点 3：Kotlin 2.0.20（上） -->
+  <line x1="270" y1="210" x2="270" y2="145" stroke="#374151" stroke-width="1.5"></line>
+  <circle cx="270" cy="210" r="5" fill="#4285f4"></circle>
+  <text x="270" y="92" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle" font-weight="bold">Kotlin 2.0.20</text>
+  <text x="270" y="110" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">KSP2 捆绑进发行版</text>
+  <text x="270" y="126" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="middle">2024-08</text>
+  <!-- 节点 4：Gradle 8.11（下） -->
+  <line x1="370" y1="210" x2="370" y2="275" stroke="#374151" stroke-width="1.5"></line>
+  <circle cx="370" cy="210" r="5" fill="#00d4aa"></circle>
+  <text x="370" y="300" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle" font-weight="bold">Gradle 8.11</text>
+  <text x="370" y="318" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">并行任务调度重做</text>
+  <text x="370" y="334" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="middle">2024-Q4</text>
+  <!-- 节点 5：Kotlin 2.2.0（上） -->
+  <line x1="470" y1="210" x2="470" y2="145" stroke="#374151" stroke-width="1.5"></line>
+  <circle cx="470" cy="210" r="5" fill="#4285f4"></circle>
+  <text x="470" y="92" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle" font-weight="bold">Kotlin 2.2.0</text>
+  <text x="470" y="110" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">KGP CC 序列化提速 8%</text>
+  <text x="470" y="126" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="middle">2025-06-23</text>
+  <!-- 节点 6：Gradle 9.0（下，高亮） -->
+  <line x1="585" y1="210" x2="585" y2="275" stroke="#fbbf24" stroke-width="1.5"></line>
+  <circle cx="585" cy="210" r="7" fill="#fbbf24"></circle>
+  <circle cx="585" cy="210" r="11" fill="none" stroke="#fbbf24" stroke-width="1" opacity="0.5"></circle>
+  <text x="585" y="300" font-family="sans-serif" font-size="13" fill="#fbbf24" text-anchor="middle" font-weight="bold">Gradle 9.0</text>
+  <text x="585" y="318" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">CC 默认启用</text>
+  <text x="585" y="334" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="middle">2025-07-31</text>
+  <!-- 节点 7：Gradle 9.1（上） -->
+  <line x1="695" y1="210" x2="695" y2="145" stroke="#374151" stroke-width="1.5"></line>
+  <circle cx="695" cy="210" r="5" fill="#00d4aa"></circle>
+  <text x="695" y="92" font-family="sans-serif" font-size="13" fill="#e5e7eb" text-anchor="middle" font-weight="bold">Gradle 9.1</text>
+  <text x="695" y="110" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">Windows 文件监视 ≈10%</text>
+  <text x="695" y="126" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="middle">2025-11</text>
+  <!-- 节点 8：AGP 9.0（下，高亮） -->
+  <line x1="800" y1="210" x2="800" y2="275" stroke="#ef4444" stroke-width="1.5"></line>
+  <circle cx="800" cy="210" r="7" fill="#ef4444"></circle>
+  <circle cx="800" cy="210" r="11" fill="none" stroke="#ef4444" stroke-width="1" opacity="0.5"></circle>
+  <text x="855" y="300" font-family="sans-serif" font-size="13" fill="#f87171" text-anchor="end" font-weight="bold">AGP 9.0</text>
+  <text x="855" y="318" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="end">KSP 自动升级到</text>
+  <text x="855" y="334" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="end">2.2.10-2.0.2（KSP2）</text>
+  <text x="855" y="351" font-family="sans-serif" font-size="10" fill="#6b7280" text-anchor="end">2025 末–2026-01</text>
+  <!-- 图例 -->
+  <text x="40" y="398" font-family="sans-serif" font-size="11" fill="#9ca3af">青 = Gradle · 蓝 = Kotlin/AGP · 黄 / 红 = 2026 关键转折</text>
+  <defs>
+    <marker id="tlarrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#4b5563"></path>
+    </marker>
+  </defs>
+</svg>
+<figcaption style="color:#9ca3af;font-size:0.85em;margin-top:0.5rem;">图 1：2023–2026 构建工具链关键版本时间线。Gradle 9.0（2025-07-31）起 Configuration Cache 默认启用；AGP 9.0 把项目 KSP 版本线拉到 2.2.10-2.0.2。</figcaption>
+</figure>
+
+<p>顺带交代生态节奏。Kotlin 2.3.0（2025-11）继续在 K2 类型推断与 API 分析上做改进，Kotlin&#x2F;Wasm、Kotlin&#x2F;Native 各有最高 2 倍与 2.5 倍的提速（JetBrains 官方博客，<a target="_blank" rel="noopener" href="https://blog.jetbrains.com/kotlin/2025/11/kotlin-2-3-0-released">blog.jetbrains.com</a>，2025-11）——后两者与 Android JVM 构建没有直接关系，但它们说明 K2 前端仍在持续加码，而 KGP 与 KSP 的版本线都跟着 Kotlin 走。Gradle、AGP、Kotlin 三条线的升级节奏从此要一起规划，这也是本文后面两节的主线。</p>
+<h2 id="Configuration-Cache：它省掉什么，向你索取什么"><a href="#Configuration-Cache：它省掉什么，向你索取什么" class="headerlink" title="Configuration Cache：它省掉什么，向你索取什么"></a>Configuration Cache：它省掉什么，向你索取什么</h2><p>先回到机理。一次 Gradle 构建分三段：init、configuration、execution。配置阶段执行所有 build script、注册并配置 task、解析依赖图——一个多模块 Android 项目的配置阶段可能要执行上万行脚本逻辑。Configuration Cache 做的事，是把整个配置阶段的结果（task graph 及其配置输入）序列化落盘，下次构建若配置输入没变，直接反序列化进入执行阶段——整个配置阶段被跳过（Gradle 官方文档：”skip the configuration phase entirely”，<a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache.html">docs.gradle.org</a>，2026-10-30 核对）。官方没有给”单项提速多少秒”的通用数字，收益与构建配置逻辑的复杂度成正比：模块越多、脚本越重，省得越多。</p>
+<p>代价是一份新契约：所有在配置期创建、执行期使用的对象必须可序列化。这就是迁移坑的全部来源。好消息是坑高度模式化，Gradle 官方维护了完整的修复建议文档，Android 官方也给出了起步配置：</p>
+<figure class="highlight properties"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># gradle.properties —— Configuration Cache 起步配置（Android 官方口径）</span></span><br><span class="line"><span class="comment"># Gradle 9.0 起默认为 true，8.x 项目从这里开始；显式写出以明确意图</span></span><br><span class="line"><span class="attr">org.gradle.configuration-cache</span>=<span class="string">true</span></span><br><span class="line"><span class="comment"># 迁移期先 warn 观察问题清单，稳定后再收紧</span></span><br><span class="line"><span class="attr">org.gradle.configuration-cache.problems</span>=<span class="string">warn</span></span><br><span class="line"><span class="comment"># build cache 与并行是另外两组独立开关，建议一起打开</span></span><br><span class="line"><span class="attr">org.gradle.caching</span>=<span class="string">true</span></span><br><span class="line"><span class="attr">org.gradle.parallel</span>=<span class="string">true</span></span><br></pre></td></tr></table></figure>
+
+<p>从官方问题清单里，我按日常撞到的概率挑出 9 条：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>坑</th>
+<th>症状</th>
+<th>解法</th>
+<th>官方出处</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>任务执行期访问 <code>Task.project</code></td>
+<td>报 cannot serialize object of type ‘org.gradle.api.Project’</td>
+<td>改用注入服务：<code>ProviderFactory</code>、<code>ObjectFactory</code>、<code>ExecOperations</code>、<code>FileSystemOperations</code></td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache.html">Gradle configuration cache 文档</a></td>
+</tr>
+<tr>
+<td>2</td>
+<td>task 字段直接持有 <code>File</code>&#x2F;<code>InputStream</code> 等不可序列化对象</td>
+<td>cannot serialize java.io.File…</td>
+<td>字段改 <code>RegularFileProperty</code>&#x2F;<code>DirectoryProperty</code>，或用 <code>String</code> 存路径</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>3</td>
+<td>lambda&#x2F;闭包捕获脚本对象（如 <code>it.file.absolutePath</code> 导航链）</td>
+<td>cannot serialize Gradle script object references</td>
+<td>状态封装进独立类，或在配置期求值为 <code>Property&lt;T&gt;</code></td>
+<td>同上</td>
+</tr>
+<tr>
+<td>4</td>
+<td>配置期文件系统探测（Gradle 8.1+ 输入跟踪）</td>
+<td><code>File.exists()</code> 等被记录为配置输入，文件一变就 cache miss，难排查</td>
+<td>用 report 定位探测点，减少配置期文件系统调用</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/build/optimize-your-build">Android Optimize your build</a></td>
+</tr>
+<tr>
+<td>5</td>
+<td>第三方插件不兼容（KAPT、部分发布&#x2F;静态检查插件）</td>
+<td>构建失败或缓存全 miss</td>
+<td>按官方 incompatibilities 章节与插件自身文档逐个排查；KAPT 场景过渡期 <code>kapt.use.worker.api=false</code>（社区口径）</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache.html">Gradle configuration cache 文档</a></td>
+</tr>
+<tr>
+<td>6</td>
+<td>KSP 与 KAPT 混用 + configuration cache</td>
+<td>直接构建失败（TaskExecutionException 类故障）</td>
+<td>迁移期尽快把全部处理器统一切到 KSP</td>
+<td><a target="_blank" rel="noopener" href="https://github.com/google/ksp/issues/1805">google&#x2F;ksp#1805</a></td>
+</tr>
+<tr>
+<td>7</td>
+<td>Tooling API &#x2F; composite builds 部分场景</td>
+<td>IDE 同步等场景异常</td>
+<td>按官方 incompatibilities 章节逐条排查</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache.html">Gradle configuration cache 文档</a></td>
+</tr>
+<tr>
+<td>8</td>
+<td>8.6 起问题报告行为收紧</td>
+<td>升级后此前可压制的问题开始失败</td>
+<td>迁移期 <code>problems=warn</code> 先观察，稳定后收紧</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache.html">Gradle configuration cache 文档</a></td>
+</tr>
+<tr>
+<td>9</td>
+<td>Gradle 9.0 默认开启</td>
+<td>老项目升级直接失败</td>
+<td>逃生口 <code>--no-configuration-cache</code>；升级前先在 8.x 清干净</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/release-notes.html">Gradle 9.0 release notes</a></td>
+</tr>
+</tbody></table>
+<p>两条使用建议。第一，诊断先于猜测：<code>./gradlew --configuration-cache-problems=report</code> 会生成 HTML 报告（<code>build/reports/configuration-cache/</code> 下），每条问题可点击跳到出问题的代码行，另有 <code>org.gradle.configuration-cache-report</code> 插件可查看序列化值明细（Gradle 官方文档，<a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache_requirements.html">docs.gradle.org</a>）——比盯着 stack trace 猜快得多。第二，升级 Gradle 9 之前先在 8.x 上把 <code>problems=warn</code> 跑干净：Gradle 8.6 起报告行为改为只对真正影响缓存结果的问题失败（Gradle 官方文档，<a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache.html">docs.gradle.org</a>，2024），你看到的告警清单就是升级后的炸点清单。</p>
+<p>Gradle 9 时代的逃生口仍然在：命令行加 <code>--no-configuration-cache</code>，或写 <code>org.gradle.configuration-cache=false</code>（Gradle 9.0 release notes &#x2F; configuration cache 文档）。但注意定位——逃生口是给”插件还没修完”的过渡期用的，不是给”不想修”用的：每次逃生都意味着这次构建放弃跳过配置阶段的全部收益。另外，Android Studio 的 Build Analyzer 会在项目上跑一系列测试构建来预判 configuration cache 兼容性（Android 官方 “Optimize your build speed”，<a target="_blank" rel="noopener" href="https://developer.android.com/build/optimize-your-build">developer.android.com</a>），升级前先用它预检一遍，比上线后救火体面。Gradle 官方还出过一期视频专讲 configuration cache 的改进与 Gradle 9 就绪情况，<a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=SW0x_oRXbYw">Gradle Configuration Cache: 2x faster, 4x smaller, and ready for Gradle 9.0</a>（Develocity 官方频道）——视频标题口径，具体数字仍以官方文档为准。</p>
+<p>最后是预期管理。翻遍官方渠道，configuration cache 没有一个”提速 X%”的通用数字——这不是文档缺失，而是收益本身强依赖项目形态：脚本越重、模块越多，被跳过的配置阶段越值钱；脚本很轻的小项目，收益可能感知不到。市面上能看到的大厂数字（Netflix、Shopify 之类）几乎都是 build cache、并行、构建扫描等组合拳的整体口径，不是 configuration cache 的单项数据。所以别拿别人的百分比立项：用后文 Gradle Profiler 的做法拿自己的 A&#x2F;B 基线，数字才有意义。</p>
+<h2 id="KSP2-与-KAPT-清理：AGP-9-0-把迁移顺序定死了"><a href="#KSP2-与-KAPT-清理：AGP-9-0-把迁移顺序定死了" class="headerlink" title="KSP2 与 KAPT 清理：AGP 9.0 把迁移顺序定死了"></a>KSP2 与 KAPT 清理：AGP 9.0 把迁移顺序定死了</h2><p>KAPT 慢的原因在架构上就写死了：它先为 Kotlin 代码生成 Java stub，再把 stub 交给 javac 的注解处理器跑一遍——等于把你的 Kotlin 代码解析了两遍（Google 官方迁移文档，<a target="_blank" rel="noopener" href="https://developer.android.com/build/migrate-to-ksp">developer.android.com</a>）。KSP（Kotlin Symbol Processing）直接分析 Kotlin 源码，官方口径是编译 Kotlin 代码时最高快 2 倍——注意这是 “up to” 的上限口径，不是均值，别拿它当预期收益写进排期。</p>
+<p>2024 年 12 月，Google 在 Android Developers 官方博客披露了两个内部大项目的 KSP2 迁移数字：Google Maps 增量构建提速 15%；Google Play Store clean 构建 22%、增量构建 24%（Android Developers 官方博客 “Accelerating Builds with KSP2”，<a target="_blank" rel="noopener" href="https://android-developers.googleblog.com/2024/12/accelerating-builds-with-ksp2.html">android-developers.googleblog.com</a>，2024-12；该页面为 JS 动态渲染，本文数字经两路搜索摘要交叉验证一致，发布前建议人工点开原文复核）。这两个案例的含金量在样本：Maps 与 Play Store 都是 Google 内部最大型的多模块 Android 项目之一，不是 Demo。更早的 KSP2 preview 时期，官方在 Now in Android 样例项目上做过 KSP1 与 KSP2 的基准对比，逐项百分比未能全文核对（原文见 <a target="_blank" rel="noopener" href="https://medium.com/androiddevelopers/accelerating-builds-with-ksp2-cdf6a24d34cf">Medium androiddevelopers 专栏</a>，复现入口见 <a target="_blank" rel="noopener" href="https://github.com/android/nowinandroid/issues/369">Nia issue #369</a>，待人工复核）。</p>
+<p>KSP2 的架构变化值得一句：它基于 Kotlin Analysis API 与 K2 编译器前端构建，脱离 K1 前端绑定，注解处理器不再与具体编译器版本强耦合（KSP 官方文档，<a target="_blank" rel="noopener" href="https://kotlinlang.org/docs/ksp-overview.html">kotlinlang.org</a>）。时间线上，Kotlin 2.0.20（2024-08）起 KSP2 捆绑进 Kotlin 编译器发行版；但 KSP 2.1.0 系列（2024 末）里 KSP2 仍是 opt-in（<code>ksp.useKSP2=true</code>），维护者在 issue 里确认仍在处理 KSP1 兼容长尾，截至 Kotlin 2.1.20 未默认（<a target="_blank" rel="noopener" href="https://github.com/google/ksp">google&#x2F;ksp</a> releases 与 issue #2394）——直到 AGP 9.0 出手，把 opt-in 变成了事实默认。</p>
+<p>这才是 2026 年迁移 KSP2 的真正触发器：AGP 9.0 运行时依赖 KGP 2.2.10，项目里的 KSP 版本若低于 2.2.10-2.0.2，AGP 会自动把它升级到该版本以匹配 KGP（AGP 9.0 官方 release notes，<a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/agp-9-0-0-release-notes">developer.android.com</a>，官方原文确认）。2.2.10-2.0.2 属于 KSP2 版本线——你的 KSP2 迁移什么时候发生，不是由你决定，而是由你什么时候升 AGP 9.0 决定。</p>
+<p>清理 KAPT 的顺序因此变得清晰。处理器侧的支持早已到位：Room 2.6.0（2023-10）起稳定支持 KSP，更早的 Room 2.4.0（2022-01 stable，KSP 为实验性）首次引入（AndroidX Room releases，<a target="_blank" rel="noopener" href="https://developer.android.com/jetpack/androidx/releases/room">developer.android.com</a>，日期 2026-10-30 核对）；Dagger&#x2F;Hilt 的 KSP 支持由 2.48（2023-08-30）起以 alpha 引入，官方文档口径的 stable 里程碑为 2.60（2026-06，配套要求 KSP 2.3.9+）（Dagger 官方 changelog，<a target="_blank" rel="noopener" href="https://github.com/google/dagger/releases">github.com&#x2F;google&#x2F;dagger&#x2F;releases</a>，日期 2026-10-30 经 GitHub Releases API 核对；stable 口径见 <a target="_blank" rel="noopener" href="https://dagger.dev/dev-guide/ksp">dagger.dev KSP 指南</a>，2026-10-30 核对）。而 KAPT 那边，JetBrains 在 KSP 2.0.0 发布时明确宣布进入 maintenance mode：只收关键 bug 修复，强烈建议迁移 KSP（JetBrains 官方博客，<a target="_blank" rel="noopener" href="https://blog.jetbrains.com/kotlin/ksp-2-0-0-released">blog.jetbrains.com</a>，2024-07）。</p>
+<p>顺序为什么不能反？推演两条路径。先升 AGP 9.0：Gradle 9.1+ 与默认开启的 configuration cache 一起进来，此时项目里若还有 kapt——kapt 与 configuration cache 本就存在不兼容场景，社区 workaround 是 <code>kapt.use.worker.api=false</code>（Tier 3 社区口径，仅作过渡）；更糟的是 KSP 与 KAPT 混用加 configuration cache 会直接构建失败（<a target="_blank" rel="noopener" href="https://github.com/google/ksp/issues/1805">google&#x2F;ksp#1805</a>，2023–2024）。带着 KAPT 升级等于同时踩两颗雷。反过来，先在 Gradle 8.x 上把 kapt 清干净再升级：处理器替换不依赖 AGP 版本，清完之后升 AGP 9.0，KSP 自动就位、config cache 默认打开也不再有雷。想看 KSP 与 KAPT 的完整对比，Android Worldwide 的这场演讲值得一看：<a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=zI1BWZOoTfw">Fact or kapt? Build your next annotation processor with KSP</a>（David Rawson）。</p>
+<p>动手替换时还有两个注意。其一，逐模块替换本身是允许的，但如前所述 KSP&#x2F;KAPT 并存加 configuration cache 会炸——替换要么赶在 config cache 开启之前完成，要么一次性全清，别停在混合态。其二，KSP1 到 KSP2 生成代码可能存在细微行为差异，AGP 9.0 自动升级完成之后，把 Room、Hilt 相关模块的编译与运行回归跑一遍，不要默认无缝。</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// build.gradle.kts（模块级）—— kapt → ksp 迁移</span></span><br><span class="line">plugins &#123;</span><br><span class="line">    id(<span class="string">&quot;com.google.devtools.ksp&quot;</span>)</span><br><span class="line">    <span class="comment">// 版本与 Kotlin 版本配对，如 2.2.10-2.0.2（AGP 9.0 生态会自动对齐）</span></span><br><span class="line">    <span class="comment">// 迁移完成后移除：id(&quot;org.jetbrains.kotlin.kapt&quot;)</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">dependencies &#123;</span><br><span class="line">    <span class="comment">// 修前（KAPT 两遍编译：先生成 Java stub，再交给 javac 注解处理器）</span></span><br><span class="line">    <span class="comment">// kapt(&quot;androidx.room:room-compiler:2.6.1&quot;)</span></span><br><span class="line">    <span class="comment">// kapt(&quot;com.google.dagger:hilt-compiler:2.60&quot;)</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 修后（KSP 直接分析 Kotlin 源码）</span></span><br><span class="line">    ksp(<span class="string">&quot;androidx.room:room-compiler:2.6.1&quot;</span>)</span><br><span class="line">    ksp(<span class="string">&quot;com.google.dagger:hilt-compiler:2.60&quot;</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 430" style="max-width:100%;height:auto;" role="img" aria-label="KSP2 迁移五步流程：清理 KAPT、预检兼容性、升级 AGP 9.0、验证 KSP2、拿基准数字；底部标注 AGP 9.0 联动约束与顺序颠倒的代价">
+  <title>KSP2 迁移顺序流程图</title>
+  <desc>五个步骤依次相连：一、清理 KAPT（kapt 换 ksp，移除 kotlin-kapt，在 Gradle 8.x 完成）；二、预检兼容性（Build Analyzer 与 problems=warn）；三、升级 AGP 9.0 与 Gradle 9.1 以上，KSP 自动升到 2.2.10-2.0.2；四、验证 KSP2 行为；五、用 Gradle Profiler 拿 A/B 基准数字。步骤三为关键转折。</desc>
+  <rect x="0" y="0" width="860" height="430" fill="#0d1117" rx="10"></rect>
+  <!-- 步骤 1 -->
+  <rect x="30" y="110" width="132" height="170" fill="#1a2332" stroke="#00d4aa" stroke-width="1.5" rx="8"></rect>
+  <text x="96" y="140" font-family="sans-serif" font-size="13" fill="#00d4aa" text-anchor="middle" font-weight="bold">1 · 清理 KAPT</text>
+  <text x="96" y="168" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">kapt(...) → ksp(...)</text>
+  <text x="96" y="186" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">移除 kotlin-kapt 插件</text>
+  <text x="96" y="204" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">Room ≥ 2.6 / Hilt ≥ 2.60</text>
+  <text x="96" y="222" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">在 Gradle 8.x 上完成</text>
+  <line x1="164" y1="195" x2="194" y2="195" stroke="#374151" stroke-width="1.5" marker-end="url(#f3arrow)"></line>
+  <!-- 步骤 2 -->
+  <rect x="196" y="110" width="132" height="170" fill="#1a2332" stroke="#4285f4" stroke-width="1.5" rx="8"></rect>
+  <text x="262" y="140" font-family="sans-serif" font-size="13" fill="#4285f4" text-anchor="middle" font-weight="bold">2 · 预检兼容性</text>
+  <text x="262" y="168" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">Build Analyzer 体检</text>
+  <text x="262" y="186" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">problems=warn 跑一轮</text>
+  <text x="262" y="204" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">查官方兼容库</text>
+  <line x1="330" y1="195" x2="360" y2="195" stroke="#374151" stroke-width="1.5" marker-end="url(#f3arrow)"></line>
+  <!-- 步骤 3（高亮） -->
+  <rect x="362" y="110" width="132" height="170" fill="#2d2410" stroke="#fbbf24" stroke-width="2" rx="8"></rect>
+  <text x="428" y="140" font-family="sans-serif" font-size="13" fill="#fbbf24" text-anchor="middle" font-weight="bold">3 · 升 AGP 9.0</text>
+  <text x="428" y="168" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">Gradle 升 9.1+</text>
+  <text x="428" y="186" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">KSP 自动升到</text>
+  <text x="428" y="204" font-family="sans-serif" font-size="10.5" fill="#fbbf24" text-anchor="middle" font-weight="bold">2.2.10-2.0.2（KSP2）</text>
+  <text x="428" y="222" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">config cache 默认开</text>
+  <line x1="496" y1="195" x2="526" y2="195" stroke="#374151" stroke-width="1.5" marker-end="url(#f3arrow)"></line>
+  <!-- 步骤 4 -->
+  <rect x="528" y="110" width="132" height="170" fill="#1a2332" stroke="#4285f4" stroke-width="1.5" rx="8"></rect>
+  <text x="594" y="140" font-family="sans-serif" font-size="13" fill="#4285f4" text-anchor="middle" font-weight="bold">4 · 验证 KSP2</text>
+  <text x="594" y="168" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">clean / 增量对比</text>
+  <text x="594" y="186" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">处理器行为回归</text>
+  <text x="594" y="204" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">处理 KSP1 长尾</text>
+  <line x1="662" y1="195" x2="692" y2="195" stroke="#374151" stroke-width="1.5" marker-end="url(#f3arrow)"></line>
+  <!-- 步骤 5 -->
+  <rect x="694" y="110" width="132" height="170" fill="#1a2332" stroke="#00d4aa" stroke-width="1.5" rx="8"></rect>
+  <text x="760" y="140" font-family="sans-serif" font-size="13" fill="#00d4aa" text-anchor="middle" font-weight="bold">5 · 拿基准数字</text>
+  <text x="760" y="168" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">Gradle Profiler</text>
+  <text x="760" y="186" font-family="sans-serif" font-size="10.5" fill="#e5e7eb" text-anchor="middle">--benchmark A/B</text>
+  <text x="760" y="204" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">开 / 关各跑 10 次</text>
+  <text x="760" y="222" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">中位数进汇报</text>
+  <!-- 底部注释 -->
+  <text x="430" y="322" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">AGP 9.0 联动约束：项目 KSP 版本低于 2.2.10-2.0.2 时，会被自动升级到该版本以匹配 KGP 2.2.10</text>
+  <text x="430" y="348" font-family="sans-serif" font-size="11" fill="#f87171" text-anchor="middle">顺序颠倒的代价：带着 KAPT 升 Gradle 9，会同时踩 KAPT×configuration cache 与 KSP/KAPT 混用两颗雷</text>
+  <defs>
+    <marker id="f3arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#374151"></path>
+    </marker>
+  </defs>
+</svg>
+<figcaption style="color:#9ca3af;font-size:0.85em;margin-top:0.5rem;">图 2：KSP2 迁移顺序。AGP 9.0 的联动约束反过来决定了清理工作必须先做：先清 KAPT，再动版本线。</figcaption>
+</figure>
+
+<h2 id="先量再修：–profile、Build-Scan、Build-Analyzer-与-Gradle-Profiler"><a href="#先量再修：–profile、Build-Scan、Build-Analyzer-与-Gradle-Profiler" class="headerlink" title="先量再修：–profile、Build Scan、Build Analyzer 与 Gradle Profiler"></a>先量再修：–profile、Build Scan、Build Analyzer 与 Gradle Profiler</h2><p>没有基线的优化全是玄学。构建提速最常见的返工，是拿着别人的清单挨个试开关，最后说不清哪条起了作用、哪条纯属安慰剂。测量工具链 Gradle 已经备齐，按投入成本从低到高：</p>
+<p><strong><code>--profile</code>：零成本的本地报告。</strong> 任何一次构建加 <code>./gradlew --profile</code>，就会在 <code>build/reports/profile/</code> 下生成本地 HTML 报告，分节列出配置阶段与任务执行阶段的耗时（Gradle 官方文档，<a target="_blank" rel="noopener" href="https://docs.gradle.org/current/userguide/performance.html">docs.gradle.org</a>）。先看这一眼，就知道你的构建是”配置贵”还是”执行贵”——这决定后面该修 config cache 还是该修任务图。</p>
+<p><strong>Build Scan：共享与深挖。</strong> Build Scan 的 Performance 页提供任务执行时间排行（含 UP-TO-DATE 与 FROM-CACHE 任务计数）、配置阶段总耗时与分项目耗时，Timeline 视图可视化任务与配置间隙（Gradle 官方文档，<a target="_blank" rel="noopener" href="https://docs.gradle.org/current/userguide/build_scans.html">docs.gradle.org</a>；<a target="_blank" rel="noopener" href="https://scans.gradle.com/">scans.gradle.com</a>）。报告可上传、链接可共享，适合团队场景；商业版 Develocity 在 Gradle 9 时代还加上了 configuration cache miss 原因报告与 artifact transform 洞察（<a target="_blank" rel="noopener" href="https://gradle.org/whats-new/gradle-9">gradle.org</a>，2025，商业产品能力，口径注明）。</p>
+<p><strong>Build Analyzer：Android 专属体检。</strong> Android Studio 的 Build Analyzer（View &gt; Tool Windows &gt; Build）会给出：缺失或多余的 daemon、动态版本依赖、按插件维度的编译耗时分布（Java&#x2F;Kotlin&#x2F;dexing），以及两条最值钱的建议——GC 占构建时间超过 15% 时增大 JVM 堆（官方建议按 4&#x2F;6&#x2F;8 GB 逐档试），以及用 KSP 替代 kapt（Android 官方文档，<a target="_blank" rel="noopener" href="https://developer.android.com/studio/build/build-analyzer">developer.android.com</a> 与 <a target="_blank" rel="noopener" href="https://developer.android.com/build/optimize-your-build">optimize-your-build</a>）。前文的 configuration cache 预检也在这里。</p>
+<p><strong>Gradle Profiler：拿得出手的 A&#x2F;B 基准。</strong> 官方基准工具，支持 <code>--benchmark</code> 模式、warm-ups 与迭代次数定义、GC 与系统性能采样，输出 Chrome Trace 与火焰图（<a target="_blank" rel="noopener" href="https://github.com/gradle/gradle-profiler">gradle&#x2F;gradle-profiler</a>）。开&#x2F;关 config cache 各跑 10 次、取中位数对比——这种数字才能进汇报。</p>
+<p>时间都花在哪，社区有一个可以建立量级感的构成：clean 构建里任务执行约 60–85%、配置阶段 10–25%、init 1–5%；增量构建里配置阶段占比会明显膨胀到 30–60%，因为任务执行被增量机制吃掉了大半；lint 单项可占 15–30%（社区观察口径，非官方统计，仅作背景）。方向是可信的：构建越”熟”（增量、缓存命中），配置阶段的相对成本越高——这正是 configuration cache 的收益场景，也是 Gradle 敢把它默认化的底气。这组量级还有个实际推论：配置占比高的项目，优化重点是 config cache 与脚本瘦身；任务执行占比高的，重点转向增量、build cache 与砍掉 lint 这类昂贵任务——先看自己的图，再选工具。</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 430" style="max-width:100%;height:auto;" role="img" aria-label="构建时间构成经验量级对比：clean 构建中 init 约 1 至 5 百分比、配置阶段 10 至 25、任务执行 60 至 85；增量构建中配置阶段膨胀到 30 至 60、任务执行为剩余部分。标注为经验量级，非官方统计">
+  <title>构建时间构成：clean 与增量的经验量级</title>
+  <desc>两条横向堆叠条形。clean 构建条：init 约 3%（范围 1–5%），配置阶段约 17%（范围 10–25%），任务执行约 80%（范围 60–85%）。增量构建条：配置阶段约 45%（范围 30–60%），任务执行约 55%。图内标注经验量级、非官方统计。</desc>
+  <rect x="0" y="0" width="860" height="430" fill="#0d1117" rx="10"></rect>
+  <!-- 图例 -->
+  <rect x="475" y="60" width="14" height="14" fill="#fbbf24" rx="2"></rect>
+  <text x="495" y="71" font-family="sans-serif" font-size="11" fill="#9ca3af">init</text>
+  <rect x="540" y="60" width="14" height="14" fill="#4285f4" rx="2"></rect>
+  <text x="560" y="71" font-family="sans-serif" font-size="11" fill="#9ca3af">配置阶段</text>
+  <rect x="645" y="60" width="14" height="14" fill="#00d4aa" rx="2"></rect>
+  <text x="665" y="71" font-family="sans-serif" font-size="11" fill="#9ca3af">任务执行</text>
+  <!-- clean 条 -->
+  <text x="250" y="100" font-family="sans-serif" font-size="13" fill="#e5e7eb" font-weight="bold">clean 构建（冷启动）</text>
+  <rect x="250" y="110" width="16.8" height="64" fill="#fbbf24"></rect>
+  <rect x="266.8" y="110" width="95.2" height="64" fill="#4285f4"></rect>
+  <rect x="362" y="110" width="448" height="64" fill="#00d4aa"></rect>
+  <text x="314" y="147" font-family="sans-serif" font-size="11" fill="#ffffff" text-anchor="middle">配置 17%</text>
+  <text x="586" y="147" font-family="sans-serif" font-size="11" fill="#ffffff" text-anchor="middle">任务执行 80%</text>
+  <line x1="258" y1="178" x2="258" y2="200" stroke="#fbbf24" stroke-width="1"></line>
+  <text x="258" y="214" font-family="sans-serif" font-size="10" fill="#fbbf24" text-anchor="middle">init ≈3%</text>
+  <text x="530" y="196" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">范围：init 1–5% · 配置 10–25% · 任务执行 60–85%</text>
+  <!-- 增量条 -->
+  <text x="250" y="240" font-family="sans-serif" font-size="13" fill="#e5e7eb" font-weight="bold">增量构建</text>
+  <rect x="250" y="250" width="252" height="64" fill="#4285f4"></rect>
+  <rect x="502" y="250" width="308" height="64" fill="#00d4aa"></rect>
+  <text x="376" y="287" font-family="sans-serif" font-size="11" fill="#ffffff" text-anchor="middle">配置 45%</text>
+  <text x="656" y="287" font-family="sans-serif" font-size="11" fill="#ffffff" text-anchor="middle">任务执行 55%</text>
+  <text x="530" y="336" font-family="sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">范围：配置 30–60% · 任务执行为剩余部分（约 35–70%）</text>
+  <!-- 底部警示 -->
+  <text x="430" y="386" font-family="sans-serif" font-size="11" fill="#fbbf24" text-anchor="middle">经验量级，非官方统计——社区观察口径，用于建立方向感，不作为精确账本</text>
+</svg>
+<figcaption style="color:#9ca3af;font-size:0.85em;margin-top:0.5rem;">图 3：构建时间构成的经验量级（社区观察口径，非官方统计）。增量构建里配置阶段的相对成本放大，这是 configuration cache 收益的来源。</figcaption>
+</figure>
+
+<h2 id="CI-缓存：三层结构、一个-matrix-坑与可复制的-workflow"><a href="#CI-缓存：三层结构、一个-matrix-坑与可复制的-workflow" class="headerlink" title="CI 缓存：三层结构、一个 matrix 坑与可复制的 workflow"></a>CI 缓存：三层结构、一个 matrix 坑与可复制的 workflow</h2><p>先把三样容易混的东西分开：configuration cache 缓存的是配置阶段结果（task graph），build cache 缓存的是任务输出，setup-gradle 管的是 Gradle User Home（wrapper 发行版、下载的依赖、configuration cache 条目）。三层各管一段，配置方式互不替代。</p>
+<p><strong>build cache：local 与 remote 两级。</strong> <code>org.gradle.caching=true</code> 或 <code>--build-cache</code> 启用；默认只有 local，remote 在 settings.gradle.kts 里配 <code>buildCache</code>（Gradle 官方文档，<a target="_blank" rel="noopener" href="https://docs.gradle.org/current/userguide/build_cache.html">docs.gradle.org</a>）。remote 的关键约束是 relocatability（可重定位性）：任务输出路径必须是相对的，否则换一台机器路径对不上、命中即失效。CI 与本地通常配成”CI 推、本地只拉”：</p>
+<figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// settings.gradle.kts —— remote build cache（Gradle 官方文档口径）</span></span><br><span class="line">buildCache &#123;</span><br><span class="line">    local &#123;</span><br><span class="line">        isEnabled = <span class="literal">true</span></span><br><span class="line">    &#125;</span><br><span class="line">    remote&lt;HttpBuildCache&gt; &#123;</span><br><span class="line">        url = uri(<span class="string">&quot;https://cache.example.com/cache/&quot;</span>)</span><br><span class="line">        isPush = System.getenv(<span class="string">&quot;CI&quot;</span>) != <span class="literal">null</span>  <span class="comment">// CI 推、本地只拉，避免污染远端</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>setup-gradle：GitHub Actions 上的默认缓存层。</strong> 官方 action（gradle-build-action 的继任者）默认缓存整个 Gradle User Home——wrapper 发行版、<code>caches/modules-2</code> 的依赖、configuration cache 条目；cache key 基于 <code>**/*.gradle*</code>、<code>**/gradle-wrapper.properties</code>、<code>**/gradle.properties</code> 等文件的哈希，支持 restore-keys 前缀匹配，并内置过期缓存清理（gradle&#x2F;actions 官方仓库，<a target="_blank" rel="noopener" href="https://github.com/gradle/actions">github.com&#x2F;gradle&#x2F;actions</a>，当前 v4&#x2F;v5 系列）。job summary 里会直接输出缓存命中与恢复大小报告，命中率好不好一眼可见。另外别低估 local build cache：同一台机器上跨分支切换、重跑 clean build 时，任务输出能直接从缓存复活，这些场景没有 remote 也受益。把 job summary 的命中率当 CI 的健康指标定期看——命中率突然下滑，多半是有人动了 gradle.properties 或 wrapper，比等构建变慢再排查主动得多。</p>
+<p><strong>matrix 与配额：最容易踩的坑。</strong> GitHub Actions 每仓库缓存配额 10GB（GitHub Actions 官方文档，<a target="_blank" rel="noopener" href="https://docs.github.com/actions">docs.github.com</a>）。多 OS matrix 下每个 job 各写一份缓存，三份 Gradle User Home 很快挤爆配额、互相驱逐。官方最佳实践是只允许一个 job 写缓存，其余只读；feature 分支也建议 <code>cache-read-only: true</code>。configuration cache 条目可能含敏感值，官方提供 <code>cache-encryption-key</code> 用 secret 加密落盘（<a target="_blank" rel="noopener" href="https://github.com/gradle/actions">github.com&#x2F;gradle&#x2F;actions</a>）。</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># .github/workflows/android-ci.yml —— 三层缓存的完整写法</span></span><br><span class="line"><span class="attr">name:</span> <span class="string">android-ci</span></span><br><span class="line"><span class="attr">on:</span> [<span class="string">push</span>, <span class="string">pull_request</span>]</span><br><span class="line"></span><br><span class="line"><span class="attr">jobs:</span></span><br><span class="line">  <span class="attr">build:</span></span><br><span class="line">    <span class="attr">runs-on:</span> <span class="string">$&#123;&#123;</span> <span class="string">matrix.os</span> <span class="string">&#125;&#125;</span></span><br><span class="line">    <span class="attr">strategy:</span></span><br><span class="line">      <span class="attr">matrix:</span></span><br><span class="line">        <span class="attr">os:</span> [<span class="string">ubuntu-latest</span>, <span class="string">macos-latest</span>, <span class="string">windows-latest</span>]</span><br><span class="line">    <span class="attr">steps:</span></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">uses:</span> <span class="string">actions/checkout@v4</span></span><br><span class="line"></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">uses:</span> <span class="string">gradle/actions/setup-gradle@v4</span></span><br><span class="line">        <span class="attr">with:</span></span><br><span class="line">          <span class="comment"># matrix 下只允许 ubuntu 这一个 job 写缓存，其余只读，</span></span><br><span class="line">          <span class="comment"># 避免 3 份 Gradle User Home 挤爆仓库 10GB 配额（官方最佳实践）</span></span><br><span class="line">          <span class="attr">cache-read-only:</span> <span class="string">$&#123;&#123;</span> <span class="string">matrix.os</span> <span class="type">!=</span> <span class="string">&#x27;ubuntu-latest&#x27;</span> <span class="string">&#125;&#125;</span></span><br><span class="line">          <span class="comment"># configuration cache 条目可能含敏感值，用 repo secret 加密后落盘</span></span><br><span class="line">          <span class="attr">cache-encryption-key:</span> <span class="string">$&#123;&#123;</span> <span class="string">secrets.GRADLE_CACHE_ENCRYPTION_KEY</span> <span class="string">&#125;&#125;</span></span><br><span class="line"></span><br><span class="line">      <span class="bullet">-</span> <span class="attr">run:</span> <span class="string">./gradlew</span> <span class="string">build</span></span><br></pre></td></tr></table></figure>
+
+<p>命中率值多少时间？官方没有给出通用的命中率或提速数字——命中率由三个因素决定：任务的 relocatability（输出路径必须相对化）、cache key 粒度、以及构建之间的重复度（Gradle 官方 build cache 文档，<a target="_blank" rel="noopener" href="https://docs.gradle.org/current/userguide/build_cache.html">docs.gradle.org</a>）。这个决定因素反过来就是缓存的边界：分支间差异越大、构建间共享的输入越少，缓存越接近失效——所以 remote cache 值不值得立项，必须用自己的构建做 A&#x2F;B（后文 Gradle Profiler 的做法），别拿别人的百分比排期。厂商侧的数字全部按客户证言口径引用，别当实测基准：Curology 的 remote cache 命中率 70–80%、CI 构建 9 分钟降到 4.5 分钟（Gradle 客户案例引述，<a target="_blank" rel="noopener" href="https://gradle.com/">gradle.com</a>）；Netflix 构建时间削减 60%+、LinkedIn CI 构建时间 -40%、Charter CI 时间 -85%+——这些是”build cache + build scan 等组合拳”的整体优化证言，不是单项数据。</p>
+<p>这套”默认缓存、显式 key、写入权收敛、给度量留报告位”的思路，与上个月变异测试那篇的 CI 门禁设计是同一个工程直觉：自动化设施的可信度，取决于它自己有没有被治理（<a href="https://blog.shuying.me/2026/10/28/mutation-testing-ai-tests/">用变异测试给 AI 生成的测试打分</a>）。缓存治不好命中率，变异门禁防不住假测试，是同一件事：先有度量，再谈加速。</p>
+<h2 id="FAQ"><a href="#FAQ" class="headerlink" title="FAQ"></a>FAQ</h2><p><strong>Gradle 9.0 默认开启了 Configuration Cache，还能关掉吗？</strong> 能。临时关：命令行加 <code>--no-configuration-cache</code>；项目级关：<code>org.gradle.configuration-cache=false</code>（Gradle 9.0 release notes）。但建议把它当逃生口而不是常态——关闭即放弃跳过配置阶段的全部收益，IDE 日常构建也会跟着慢。正确姿势是按坑清单逐条修插件，用 <code>--configuration-cache-problems=report</code> 定位。</p>
+<p><strong>KSP2 与 KSP1 到底差在哪？现在必须切 KSP2 吗？</strong> 架构上 KSP2 基于 Kotlin Analysis API 与 K2 编译器前端，处理器不再与 K1 强耦合（<a target="_blank" rel="noopener" href="https://kotlinlang.org/docs/ksp-overview.html">kotlinlang.org</a>）。”是否必须”由 AGP 9.0 替你回答：它会把低于 2.2.10-2.0.2 的 KSP 自动升级（AGP 9.0 release notes）——只要升 AGP 9.0，KSP2 就到了。你需要主动做的是处理器侧：确认 Room、Hilt 等处理器版本配套，把残余 kapt 清掉。</p>
+<p><strong>remote build cache 和 configuration cache 是一回事吗？</strong> 不是，别混着配。configuration cache 缓存”配置阶段的结果”，收益是跳过配置；build cache 缓存”任务的输出”，收益是跳过任务执行。前者对配置重的多模块项目收益大，后者对”很多人在相似代码上反复构建”的 CI 场景收益大。Gradle 9 上前者默认开启，两者在 CI 还要叠加 setup-gradle 的 User Home 缓存——三层各司其职。</p>
+<p><strong>没有自建 build cache 服务器，CI 还能快吗？</strong> 能先拿到大头：local build cache 加 setup-gradle 默认的 Gradle User Home 缓存，wrapper 与依赖下载直接命中，task 输出在同一 runner 的热缓存里复用。需要跨 runner 共享任务输出时再上 remote——Gradle 官方支持 HTTP 后端（HttpBuildCache），自托管或托管服务均可。先用 job summary 里的命中率报告说话，再决定要不要为 remote 服务器立项。</p>
+<h2 id="结语"><a href="#结语" class="headerlink" title="结语"></a>结语</h2><p>从 2016 年系列里的 Gradle 2.x，到 2026 年默认开启 configuration cache 的 Gradle 9，这个话题十年的变化很有代表性：当年要解决的是”怎么把构建配置起来”，如今要防的是”升级会不会把构建弄死”。提速三件套——Configuration Cache、KSP2、构建扫描——在 2026 年的正确打开方式，是把它们当一组有依赖关系的工程任务，而不是三个独立开关：先测量（Build Analyzer 预检，Gradle Profiler 拿基线），再清 KAPT（在 Gradle 8.x 上完成），然后升 AGP 9.0 让 KSP2 与 config cache 默认就位，最后把 CI 的三层缓存配齐，用 job summary 的命中率持续盯梢。</p>
+<p>下一步可做的事，按顺序：跑一次 <code>--profile</code>，看配置与执行的占比；在 Build Analyzer 里过一遍体检报告；给 gradle.properties 加上起步配置；挑一个模块把 kapt 换成 ksp；在 CI 的一个 job 上启用 setup-gradle，观察一周命中率。每一件半天内都能完成，叠起来的收益会用你自己的数字说话——这也是本文与清单式技巧文的区别：基线先立，优化才有对错。</p>
+<hr>
+<p><strong>相关阅读：</strong> <a href="https://blog.shuying.me/2026/10/28/mutation-testing-ai-tests/">AI 单元测试的有效性验证：用变异测试给 AI 生成的测试打分</a></p>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><table>
+<thead>
+<tr>
+<th>#</th>
+<th>来源</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/release-notes.html">Gradle 9.0 release notes</a></td>
+<td>2025-07-31；Configuration Cache 默认启用；Windows task 执行 5–10%；Java 24；逃生口</td>
+</tr>
+<tr>
+<td>2</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache.html">Gradle 9.0 configuration cache 文档</a></td>
+<td>2025-07；”skip the configuration phase entirely”定性口径；要求 AGP 8.0+ 与全插件兼容；修复建议与 incompatibilities 章节</td>
+</tr>
+<tr>
+<td>3</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.0.0/userguide/configuration_cache_requirements.html">Gradle configuration cache requirements</a></td>
+<td>配置输入跟踪；<code>--configuration-cache-problems=report</code> 诊断入口</td>
+</tr>
+<tr>
+<td>4</td>
+<td><a target="_blank" rel="noopener" href="https://roadmap.gradle.org/entity/2hkefljvwagcpeicvkksp9qii/">Gradle roadmap</a></td>
+<td>“默认启用 Configuration Cache”状态 Shipped；2026-10-30 核对</td>
+</tr>
+<tr>
+<td>5</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/build/optimize-your-build">Android — Optimize your build speed</a></td>
+<td>8.1 stable 表述；配置输入跟踪；GC&gt;15% 加堆（4&#x2F;6&#x2F;8 GB）；Build Analyzer 预检；起步配置</td>
+</tr>
+<tr>
+<td>6</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/past-releases/agp-8-1-0-release-notes">AGP 8.1 release notes</a></td>
+<td>2023-07；AGP fully supports configuration cache</td>
+</tr>
+<tr>
+<td>7</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/gradle-plugin">AGP — Gradle 兼容矩阵</a></td>
+<td>AGP 9.0 最低 Gradle 9.1.0；持续更新</td>
+</tr>
+<tr>
+<td>8</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/agp-9-0-0-release-notes">AGP 9.0 release notes</a></td>
+<td>KGP 2.2.10 &#x2F; KSP 2.2.10-2.0.2 自动升级；内置 Kotlin 支持；9.0.1 于 2026-01；9.0.0 精确日期未核实（约 2025 年末），待人工复核</td>
+</tr>
+<tr>
+<td>9</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/build/releases/agp-9-5-0-release-notes">AGP 9.5.0 release notes</a></td>
+<td>2026；最低 Gradle 9.6.0、JDK 17、max API 37</td>
+</tr>
+<tr>
+<td>10</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/8.11/release-notes.html">Gradle 8.11 release notes</a></td>
+<td>2024-Q4（精确日期未核实）；并行任务调度重做；<code>gradle init</code> 新项目默认启用 Configuration Cache</td>
+</tr>
+<tr>
+<td>11</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/9.1.0/release-notes.html">Gradle 9.1 release notes</a></td>
+<td>2025-11；Windows 默认 file system watching，构建延迟最高改善约 10%</td>
+</tr>
+<tr>
+<td>12</td>
+<td><a target="_blank" rel="noopener" href="https://blog.jetbrains.com/kotlin/2025/06/kotlin-2-2-0-released">JetBrains — Kotlin 2.2.0 Released</a></td>
+<td>2025-06-23；KGP configuration cache 序列化提速最高 8%</td>
+</tr>
+<tr>
+<td>13</td>
+<td><a target="_blank" rel="noopener" href="https://www.infoq.com/news/2025/08/gradle-9-released/">InfoQ — Gradle 9 Released</a></td>
+<td>2025-08；JetBrains 单场景 3.37s → 2.63s（量级参考）</td>
+</tr>
+<tr>
+<td>14</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/build/migrate-to-ksp">Google — Migrate from kapt to KSP</a></td>
+<td>KAPT 两遍编译机理；KSP 最高 2 倍（up to 口径）</td>
+</tr>
+<tr>
+<td>15</td>
+<td><a target="_blank" rel="noopener" href="https://android-developers.googleblog.com/2024/12/accelerating-builds-with-ksp2.html">Android Developers 博客 — Accelerating Builds with KSP2</a></td>
+<td>2024-12；Maps 增量 -15%、Play Store clean -22% &#x2F; 增量 -24%；JS 渲染页面，数字经搜索摘要交叉验证，待人工复核</td>
+</tr>
+<tr>
+<td>16</td>
+<td><a target="_blank" rel="noopener" href="https://medium.com/androiddevelopers/accelerating-builds-with-ksp2-cdf6a24d34cf">Medium — Accelerating Builds with KSP2 (preview)</a> &#x2F; <a target="_blank" rel="noopener" href="https://github.com/android/nowinandroid/issues/369">Nia issue #369</a></td>
+<td>2023-11；KSP1 vs KSP2 preview 基准；逐项百分比未核对，待人工复核</td>
+</tr>
+<tr>
+<td>17</td>
+<td><a target="_blank" rel="noopener" href="https://blog.jetbrains.com/kotlin/ksp-2-0-0-released">JetBrains — KSP 2.0.0 Released</a></td>
+<td>2024-07；KAPT maintenance mode</td>
+</tr>
+<tr>
+<td>18</td>
+<td><a target="_blank" rel="noopener" href="https://github.com/google/ksp">google&#x2F;ksp GitHub</a>（含 <a target="_blank" rel="noopener" href="https://github.com/google/ksp/issues/2394">issue #2394</a>、<a target="_blank" rel="noopener" href="https://github.com/google/ksp/issues/1805">issue #1805</a>）</td>
+<td>KSP2 时间线与 opt-in 口径；kapt&#x2F;ksp 混用 × configuration cache 失败</td>
+</tr>
+<tr>
+<td>19</td>
+<td><a target="_blank" rel="noopener" href="https://kotlinlang.org/docs/ksp-overview.html">Kotlin KSP overview</a></td>
+<td>KSP2 架构：Kotlin Analysis API + K2 编译器前端</td>
+</tr>
+<tr>
+<td>20</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/jetpack/androidx/releases/room">AndroidX Room releases</a></td>
+<td>Room 2.4.0 首次支持 KSP（实验，2022-01-27 stable）；2.6.0 稳定支持（2023-10）；2026-10-30 核对</td>
+</tr>
+<tr>
+<td>21</td>
+<td><a target="_blank" rel="noopener" href="https://github.com/google/dagger/releases">Dagger releases</a> &#x2F; <a target="_blank" rel="noopener" href="https://dagger.dev/dev-guide/ksp">dagger.dev — KSP 指南</a></td>
+<td>2.48 alpha KSP（2023-08-30，release notes 原文”alpha release”）；stable 归属 2.60+ &#x2F; KSP 2.3.9+（2.60 于 2026-06-26）；日期经 GitHub Releases API 核对、stable 口径经 dagger.dev 核对（2026-10-30）</td>
+</tr>
+<tr>
+<td>22</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/current/userguide/build_cache.html">Gradle build cache 文档</a></td>
+<td>local + remote 两级；relocatability 约束；命中率决定因素</td>
+</tr>
+<tr>
+<td>23</td>
+<td><a target="_blank" rel="noopener" href="https://github.com/gradle/actions">gradle&#x2F;actions</a></td>
+<td>setup-gradle 缓存内容与 cache key；cache-read-only；cache-encryption-key；job summary 报告</td>
+</tr>
+<tr>
+<td>24</td>
+<td><a target="_blank" rel="noopener" href="https://docs.github.com/actions">GitHub Actions 文档</a></td>
+<td>每仓库 10GB 缓存配额</td>
+</tr>
+<tr>
+<td>25</td>
+<td><a target="_blank" rel="noopener" href="https://gradle.com/">Gradle 客户案例</a></td>
+<td>Curology 命中率 70–80%、9→4.5 min；Netflix 60%+；LinkedIn -40%；Charter -85%+；均为客户证言口径，渠道为域名级链接</td>
+</tr>
+<tr>
+<td>26</td>
+<td><a target="_blank" rel="noopener" href="https://docs.gradle.org/current/userguide/build_scans.html">Gradle build scans &#x2F; performance 文档</a></td>
+<td>Build Scan Performance 页能力；<code>--profile</code> 本地报告</td>
+</tr>
+<tr>
+<td>27</td>
+<td><a target="_blank" rel="noopener" href="https://developer.android.com/studio/build/build-analyzer">Android — Build Analyzer</a></td>
+<td>体检报告能力清单（daemon、GC、KSP 建议）</td>
+</tr>
+<tr>
+<td>28</td>
+<td><a target="_blank" rel="noopener" href="https://github.com/gradle/gradle-profiler">gradle&#x2F;gradle-profiler</a></td>
+<td>A&#x2F;B 基准、warm-ups&#x2F;iterations、Chrome Trace &#x2F; 火焰图</td>
+</tr>
+<tr>
+<td>29</td>
+<td><a target="_blank" rel="noopener" href="https://gradle.org/whats-new/gradle-9">gradle.org — What’s new in Gradle 9</a></td>
+<td>2025；Develocity 新增 CC miss 原因报告等（商业版能力）</td>
+</tr>
+<tr>
+<td>30</td>
+<td><a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=SW0x_oRXbYw">Develocity — Gradle Configuration Cache（视频）</a> &#x2F; <a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=zI1BWZOoTfw">Fact or kapt?（视频）</a></td>
+<td>oEmbed 已验证存在；视频标题口径，不作数据引用</td>
+</tr>
+<tr>
+<td>31</td>
+<td><a target="_blank" rel="noopener" href="https://blog.jetbrains.com/kotlin/2025/11/kotlin-2-3-0-released">JetBrains — Kotlin 2.3.0 Released</a></td>
+<td>2025-11；K2 推断&#x2F;API 分析改进；Wasm 最高 2x、Native 最高 2.5x（与 Android JVM 构建无直接关系，仅生态节奏背景）</td>
+</tr>
+</tbody></table>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/10/30/android-build-speedup-2026/" title="2026 版 Android 构建提速：Configuration Cache、KSP2 与构建扫描实战">https://blog.shuying.me/2026/10/30/android-build-speedup-2026/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/CI-CD/" rel="tag"># CI/CD</a>
+              <a href="/tags/Gradle/" rel="tag"># Gradle</a>
+              <a href="/tags/Android/" rel="tag"># Android</a>
+              <a href="/tags/%E6%9E%84%E5%BB%BA%E6%8F%90%E9%80%9F/" rel="tag"># 构建提速</a>
+              <a href="/tags/Configuration-Cache/" rel="tag"># Configuration Cache</a>
+              <a href="/tags/KSP/" rel="tag"># KSP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/10/28/mutation-testing-ai-tests/" rel="prev" title="AI 单元测试的有效性验证：用变异测试给 AI 生成的测试打分">
+      <i class="fa fa-chevron-left"></i> AI 单元测试的有效性验证：用变异测试给 AI 生成的测试打分
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%B0%E5%9F%BA%E7%BA%BF%EF%BC%9A%E9%BB%98%E8%AE%A4%E5%BC%80%E5%90%AF%E7%9A%84-Configuration-Cache-%E4%B8%8E%E8%A2%AB-AGP-%E7%BB%91%E6%AD%BB%E7%9A%84%E7%89%88%E6%9C%AC%E7%BA%BF"><span class="nav-number">1.</span> <span class="nav-text">新基线：默认开启的 Configuration Cache 与被 AGP 绑死的版本线</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Configuration-Cache%EF%BC%9A%E5%AE%83%E7%9C%81%E6%8E%89%E4%BB%80%E4%B9%88%EF%BC%8C%E5%90%91%E4%BD%A0%E7%B4%A2%E5%8F%96%E4%BB%80%E4%B9%88"><span class="nav-number">2.</span> <span class="nav-text">Configuration Cache：它省掉什么，向你索取什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#KSP2-%E4%B8%8E-KAPT-%E6%B8%85%E7%90%86%EF%BC%9AAGP-9-0-%E6%8A%8A%E8%BF%81%E7%A7%BB%E9%A1%BA%E5%BA%8F%E5%AE%9A%E6%AD%BB%E4%BA%86"><span class="nav-number">3.</span> <span class="nav-text">KSP2 与 KAPT 清理：AGP 9.0 把迁移顺序定死了</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%88%E9%87%8F%E5%86%8D%E4%BF%AE%EF%BC%9A%E2%80%93profile%E3%80%81Build-Scan%E3%80%81Build-Analyzer-%E4%B8%8E-Gradle-Profiler"><span class="nav-number">4.</span> <span class="nav-text">先量再修：–profile、Build Scan、Build Analyzer 与 Gradle Profiler</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#CI-%E7%BC%93%E5%AD%98%EF%BC%9A%E4%B8%89%E5%B1%82%E7%BB%93%E6%9E%84%E3%80%81%E4%B8%80%E4%B8%AA-matrix-%E5%9D%91%E4%B8%8E%E5%8F%AF%E5%A4%8D%E5%88%B6%E7%9A%84-workflow"><span class="nav-number">5.</span> <span class="nav-text">CI 缓存：三层结构、一个 matrix 坑与可复制的 workflow</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#FAQ"><span class="nav-number">6.</span> <span class="nav-text">FAQ</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E8%AF%AD"><span class="nav-number">7.</span> <span class="nav-text">结语</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-number">8.</span> <span class="nav-text">参考资料</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">30</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">11</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">45</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
