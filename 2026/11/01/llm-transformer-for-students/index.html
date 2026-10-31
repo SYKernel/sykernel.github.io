@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="从&quot;文字接龙&quot;讲到注意力机制：token 怎么把文字变成积木块、Transformer 靠什么读懂上文、训练与推理的区别，附一个浏览器里就能拆开看的真实 GPT-2。零代码基础，适合中学生与亲子共读。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="大语言模型是什么？写给中学生的 Transformer 入门">
+<meta property="og:url" content="https://blog.shuying.me/2026/11/01/llm-transformer-for-students/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="从&quot;文字接龙&quot;讲到注意力机制：token 怎么把文字变成积木块、Transformer 靠什么读懂上文、训练与推理的区别，附一个浏览器里就能拆开看的真实 GPT-2。零代码基础，适合中学生与亲子共读。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/llm-transformer-for-students-cover.png">
+<meta property="article:published_time" content="2026-11-01T02:00:00.000Z">
+<meta property="article:modified_time" content="2026-10-31T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="AI 科普">
+<meta property="article:tag" content="大语言模型">
+<meta property="article:tag" content="Transformer">
+<meta property="article:tag" content="LLM">
+<meta property="article:tag" content="注意力机制">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/llm-transformer-for-students-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/11/01/llm-transformer-for-students/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>大语言模型是什么？写给中学生的 Transformer 入门 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/11/01/llm-transformer-for-students/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          大语言模型是什么？写给中学生的 Transformer 入门
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-11-01 10:00:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-11-01T10:00:00+08:00">2026-11-01</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/AI-%E7%A7%91%E6%99%AE/" itemprop="url" rel="index"><span itemprop="name">AI 科普</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">从"文字接龙"讲到注意力机制：token 怎么把文字变成积木块、Transformer 靠什么读懂上文、训练与推理的区别，附一个浏览器里就能拆开看的真实 GPT-2。零代码基础，适合中学生与亲子共读。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/llm-transformer-for-students-cover.png" itemprop="contentUrl">
+        </div>
+        <p>你在聊天框里问 AI：”给我讲个笑话。”它停顿一两秒，然后一个字一个字地把笑话”打”出来。它打字的时候，脑子里在想吗？</p>
+<p>答案可能让你意外：<strong>它每打一个字，都在玩一场文字接龙</strong>。读完你说的每一句话，猜”下一个字最可能是什么”；猜出一个，接上去，再接着猜下一个。</p>
+<p>“就这？”——你可能觉得这也太简单了。但今天所有能写文章、能翻译、能陪你聊天的”大模型”，核心都是这场接龙。这篇我们把它拆开看清楚：AI 到底怎么”认字”？凭什么知道下一个字猜什么？为什么它有时聪明得吓人，有时又一本正经地说错话？</p>
+<p>不需要编程基础，也不背公式。前置知识只有一篇：<a href="https://blog.shuying.me/2026/09/22/2026-09-22-deep-learning-for-kids/">深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程</a>——那里讲过的”神经网络””旋钮（参数）””猜-调循环”，这篇直接拿来用。</p>
+<blockquote><p><strong>Key Takeaways</strong></p><ul>
+<li>大语言模型干的活只有一件：<strong>接龙</strong>。读进所有的字，输出"下一个字"的概率表，然后掷骰子选一个、接上去，再猜下一个。</li>
+<li>AI 从头到尾不认识字——文字先被切成"积木块"（token）换成编号，它算的全是数字。Llama 3 的教材有超过 15 万亿块积木（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2407.21783">Meta 论文</a>，2024）。</li>
+<li>决定"怎么读上文"的核心设计叫 <strong>Transformer</strong>（Google，2017）：靠<strong>注意力</strong>机制回头看上文——读到"它"时，给"动物"打一束聚光灯。</li>
+<li><strong>训练是上课</strong>（旋钮在动，几千亿次循环），<strong>推理是上班</strong>（旋钮锁死，只做接龙）——你现在用的每个 AI 都在"上班"，它不会偷偷把你的话学进旋钮里。</li>
+<li>今天就能动手：<a target="_blank" rel="noopener" href="https://poloclub.github.io/transformer-explainer/">Transformer Explainer</a> 在浏览器里跑一个真实的 GPT-2，AI 的每个零件都看得到。</li>
+</ul></blockquote>
+
+<p class="toc"><strong>本文目录</strong>：<a href="#sec-1">一、文字接龙</a> · <a href="#sec-2">二、token 积木块</a> · <a href="#sec-3">三、注意力聚光灯</a> · <a href="#sec-4">四、训练与推理</a> · <a href="#sec-5">五、动手拆 GPT-2</a> · <a href="#sec-6">六、猜字大师与懂字大师</a> · <a href="#sec-faq">FAQ</a></p>
+
+<h2 id="一、语言模型：一场文字接龙"><a href="#一、语言模型：一场文字接龙" class="headerlink" title="一、语言模型：一场文字接龙"></a>一、语言模型：一场文字接龙</h2><p><a id="sec-1"></a></p>
+<p>第一篇说过，AI 认猫是”看图 → 猜答案 → 被纠正”。语言版游戏一模一样，只是答案从”猫”变成了<strong>下一个字</strong>。</p>
+<p>给模型看半句话：”今天天气真”，它的工作是把接下去每个候选字都打个分：</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 400" style="max-width:100%;height:auto;" role="img" aria-label="文字接龙示意图：输入今天天气真，模型给候选字打分，好 62%、棒 21%、冷 9%、差 5%，掷骰子选中好">
+  <title>文字接龙：猜下一个字</title>
+  <desc>输入"今天天气真"，模型输出一张概率表：好的可能性最高，其次是棒、冷、差，最后掷骰子选一个字接上去。</desc>
+  <rect x="0" y="0" width="860" height="400" rx="10" fill="#0d1117"></rect>
+  <text x="430" y="42" font-family="sans-serif" font-size="15" fill="#e5e7eb" text-anchor="middle" font-weight="bold">接龙第一步：读完上文，给"下一个字"打分</text>
+  <text x="430" y="66" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">模型输出的不是答案，是一整张概率表</text>
+  <rect x="40" y="110" width="220" height="56" rx="12" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"></rect>
+  <text x="150" y="146" font-family="sans-serif" font-size="17" fill="#e5e7eb" text-anchor="middle">今天天气真 ▏</text>
+  <line x1="262" y1="138" x2="292" y2="138" stroke="#6b7280" stroke-width="2.5"></line>
+  <polygon points="292,133 302,138 292,143" fill="#6b7280"></polygon>
+  <text x="310" y="123" font-family="sans-serif" font-size="14" fill="#e5e7eb" text-anchor="end">好</text>
+  <rect x="330" y="105" width="280" height="26" rx="6" fill="#22c55e"></rect>
+  <text x="602" y="123" font-family="sans-serif" font-size="12" fill="#0d1117" text-anchor="end" font-weight="bold">62%</text>
+  <text x="310" y="173" font-family="sans-serif" font-size="14" fill="#e5e7eb" text-anchor="end">棒</text>
+  <rect x="330" y="155" width="95" height="26" rx="6" fill="#38bdf8"></rect>
+  <text x="433" y="173" font-family="sans-serif" font-size="12" fill="#38bdf8">21%</text>
+  <text x="310" y="223" font-family="sans-serif" font-size="14" fill="#e5e7eb" text-anchor="end">冷</text>
+  <rect x="330" y="205" width="41" height="26" rx="6" fill="#a78bfa"></rect>
+  <text x="379" y="223" font-family="sans-serif" font-size="12" fill="#a78bfa">9%</text>
+  <text x="310" y="273" font-family="sans-serif" font-size="14" fill="#e5e7eb" text-anchor="end">差</text>
+  <rect x="330" y="255" width="23" height="26" rx="6" fill="#f59e0b"></rect>
+  <text x="361" y="273" font-family="sans-serif" font-size="12" fill="#f59e0b">5%</text>
+  <rect x="700" y="105" width="140" height="176" rx="12" fill="#0d1f2d" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 4"></rect>
+  <rect x="740" y="130" width="60" height="60" rx="12" fill="none" stroke="#e5e7eb" stroke-width="2.5"></rect>
+  <circle cx="755" cy="145" r="4" fill="#e5e7eb"></circle>
+  <circle cx="785" cy="145" r="4" fill="#e5e7eb"></circle>
+  <circle cx="755" cy="175" r="4" fill="#e5e7eb"></circle>
+  <circle cx="785" cy="175" r="4" fill="#e5e7eb"></circle>
+  <circle cx="770" cy="160" r="4" fill="#e5e7eb"></circle>
+  <text x="770" y="218" font-family="sans-serif" font-size="12" fill="#e5e7eb" text-anchor="middle">掷骰子，选一个</text>
+  <text x="770" y="240" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">接上去，再猜下一个</text>
+  <text x="430" y="335" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">图中的概率是示意值——不同模型、不同上文，数值都会不同；真实模型每次输出几万个候选字的完整概率表</text>
+  <text x="430" y="358" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">概率最高的字被选中的机会最大，但不是每次都选它</text>
+</svg>
+<figcaption>Figure 1. 接龙：读"今天天气真"，给候选字打分，掷骰子选一个。概率为示意值，作者绘制。</figcaption>
+</figure>
+
+<p>猜完”好”，把”好”接到句尾，句子上文变成”今天天气真好”，接着猜再下一个字。就这样一个字一个字，一段回答被”接”了出来。你看到的 AI 打字总是一个字一个字往外蹦，不是故意卖关子——<strong>它真的是一个字一个字猜出来的</strong>。</p>
+<p>别小看这场接龙。要把”今天天气真”后面的”好”猜对，模型得懂中文搭配；要把”小明把作业本忘在了学校，因为”后面接”他忘性大”而不是”学校忘性大”，它得懂常识、懂”他”指的是谁。猜对下一个字，考验的是对语言和世界的整套理解——数学上，这是个深不见底的任务。<strong>能把这个游戏玩到高分的东西，看起来就像在”使用语言”<strong>。所以科学家给这种模型起了个朴实的名字：</strong>语言模型</strong>——“大”，只是因为旋钮多（GPT-2 有 1.24 亿个参数，GPT-3 有 1750 亿个，第一篇我们数过这 1750 亿是什么概念）。</p>
+<h2 id="二、AI-不认识字，只认识积木块：token"><a href="#二、AI-不认识字，只认识积木块：token" class="headerlink" title="二、AI 不认识字，只认识积木块：token"></a>二、AI 不认识字，只认识积木块：token</h2><p><a id="sec-2"></a></p>
+<p>第一个反直觉的事实来了：<strong>模型从头到尾不认识汉字，也不认识英文单词</strong>。计算机只认数字，所以文字要先把它们”翻译”成数字。</p>
+<p>翻译的办法不是查字典，而是<strong>切积木</strong>：把一段文字切成一小块一小块，每一块叫一个 <strong>token</strong>。切法既不是按字，也不是按词，而是模型自己学出来的：</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 420" style="max-width:100%;height:auto;" role="img" aria-label="token 切分示意：中文句子我喜欢大语言模型切成八块，英文单词 unbelievable 拆成 un、believ、able 三块">
+  <title>token：AI 的文字积木块</title>
+  <desc>中文一句被切成八块，每块大致对应一个字；英文单词 unbelievable 被拆成 un、believ、able 三块。每块换成一个编号后进入模型。</desc>
+  <rect x="0" y="0" width="860" height="420" rx="10" fill="#0d1117"></rect>
+  <text x="430" y="40" font-family="sans-serif" font-size="15" fill="#e5e7eb" text-anchor="middle" font-weight="bold">文字先切块，再换编号：AI 读到的其实是数字</text>
+  <text x="80" y="82" font-family="sans-serif" font-size="12" fill="#9ca3af">中文示例：我喜欢大语言模型（常见切法之一）</text>
+  <rect x="80" y="96" width="76" height="56" rx="8" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"></rect>
+  <text x="118" y="132" font-family="sans-serif" font-size="20" fill="#e5e7eb" text-anchor="middle">我</text>
+  <rect x="164" y="96" width="76" height="56" rx="8" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"></rect>
+  <text x="202" y="132" font-family="sans-serif" font-size="20" fill="#e5e7eb" text-anchor="middle">喜</text>
+  <rect x="248" y="96" width="76" height="56" rx="8" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"></rect>
+  <text x="286" y="132" font-family="sans-serif" font-size="20" fill="#e5e7eb" text-anchor="middle">欢</text>
+  <rect x="332" y="96" width="76" height="56" rx="8" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"></rect>
+  <text x="370" y="132" font-family="sans-serif" font-size="20" fill="#e5e7eb" text-anchor="middle">大</text>
+  <rect x="416" y="96" width="76" height="56" rx="8" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"></rect>
+  <text x="454" y="132" font-family="sans-serif" font-size="20" fill="#e5e7eb" text-anchor="middle">语</text>
+  <rect x="500" y="96" width="76" height="56" rx="8" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"></rect>
+  <text x="538" y="132" font-family="sans-serif" font-size="20" fill="#e5e7eb" text-anchor="middle">言</text>
+  <rect x="584" y="96" width="76" height="56" rx="8" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"></rect>
+  <text x="622" y="132" font-family="sans-serif" font-size="20" fill="#e5e7eb" text-anchor="middle">模</text>
+  <rect x="668" y="96" width="76" height="56" rx="8" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"></rect>
+  <text x="706" y="132" font-family="sans-serif" font-size="20" fill="#e5e7eb" text-anchor="middle">型</text>
+  <text x="80" y="176" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 1</text>
+  <text x="164" y="176" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 2</text>
+  <text x="248" y="176" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 3</text>
+  <text x="332" y="176" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 4</text>
+  <text x="416" y="176" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 5</text>
+  <text x="500" y="176" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 6</text>
+  <text x="584" y="176" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 7</text>
+  <text x="668" y="176" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 8</text>
+  <text x="80" y="236" font-family="sans-serif" font-size="12" fill="#9ca3af">英文示例：unbelievable（不可相信）→ 常被拆成 3 块</text>
+  <rect x="80" y="250" width="110" height="56" rx="8" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2"></rect>
+  <text x="135" y="286" font-family="sans-serif" font-size="18" fill="#e5e7eb" text-anchor="middle">un</text>
+  <rect x="198" y="250" width="190" height="56" rx="8" fill="#0d1f2d" stroke="#38bdf8" stroke-width="2"></rect>
+  <text x="293" y="286" font-family="sans-serif" font-size="18" fill="#e5e7eb" text-anchor="middle">believ</text>
+  <rect x="396" y="250" width="130" height="56" rx="8" fill="#0d1f2d" stroke="#22c55e" stroke-width="2"></rect>
+  <text x="461" y="286" font-family="sans-serif" font-size="18" fill="#e5e7eb" text-anchor="middle">able</text>
+  <text x="80" y="330" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 1</text>
+  <text x="198" y="330" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 2</text>
+  <text x="396" y="330" font-family="sans-serif" font-size="10.5" fill="#6b7280">token 3</text>
+  <rect x="560" y="250" width="280" height="130" rx="12" fill="#111827" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 4"></rect>
+  <text x="700" y="282" font-family="sans-serif" font-size="11.5" fill="#e5e7eb" text-anchor="middle" font-weight="bold">三个要点</text>
+  <text x="700" y="308" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">英文平均 1 块 ≈ 4 个字母</text>
+  <text x="700" y="330" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">（OpenAI 官方口径，常见英文文本）</text>
+  <text x="700" y="356" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">切法是模型学出来的，不同模型不同</text>
+  <text x="430" y="402" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">图为示意。GPT-2 的"积木字典"共收录 50257 种块（<a target="_blank" rel="noopener" href="https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf" style="fill:#93c5fd;text-decoration:underline;">GPT-2 论文</a>），每一块对应一个编号，AI 只算编号</text>
+</svg>
+<figcaption>Figure 2. token 切分示意：中文常见一字一块，英文长词被拆成小块。作者绘制，切法依 GPT 系模型惯例示意。</figcaption>
+</figure>
+
+<p>为什么要切这么碎？两个原因。<strong>其一，省空间</strong>：把每种块都存进”积木字典”，字典越小越省事——高频的整词单独成块，低频的长词拆成小块，是学出来的省钱方案。<strong>其二，够灵活</strong>：网上不断冒出新词（比如”凡尔赛文学”），现拼几块旧积木就能表示，不用重修字典。</p>
+<p>规模感受一下。OpenAI 的官方口径：常见英文文本，平均 1 个 token 约对应 4 个字符（<a target="_blank" rel="noopener" href="https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them">OpenAI 帮助文档</a>）。GPT-3 的训练教材约 3000 亿块积木（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2005.14165">GPT-3 论文</a>，2020）；三年后的 Llama 3 用了超过 <strong>15 万亿</strong>块（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2407.21783">Meta 论文《The Llama 3 Herd of Models》</a>，2024）。15 万亿块是什么概念？每秒数一块、不吃不睡，要数约 47 万年。第一篇说过”教材越多越杂，AI 学得越好”——语言模型的教材怎么堆到这个量级的，第四节揭晓。</p>
+<h2 id="三、Transformer：给接龙选手装上”注意力聚光灯”"><a href="#三、Transformer：给接龙选手装上”注意力聚光灯”" class="headerlink" title="三、Transformer：给接龙选手装上”注意力聚光灯”"></a>三、Transformer：给接龙选手装上”注意力聚光灯”</h2><p><a id="sec-3"></a></p>
+<p>接龙的难点从来不在”猜一个字”，而在<strong>读上文</strong>：上面几百个字里，哪些字跟”下一个字”有关？</p>
+<p>看这个英文句子：The animal didn’t cross the street because <strong>it</strong> was too <strong>tired</strong>（动物没有过马路，因为它太累了）。这里的 “it” 指谁？你一秒就答上来——“累”的只能是动物，不可能是马路。但把 “tired”（累）换成 “wide”（宽），”it” 就瞬间指向马路了。机器没有常识，它靠什么锁定？</p>
+<p>2017 年，Google 团队用一篇论文给出了答案：<strong>注意力机制（attention）</strong>。论文的标题起得相当狂：《Attention Is All You Need》——“注意力，就是你所需要的一切”（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1706.03762">Vaswani et al.</a>，2017）。这个架构后来得名 <strong>Transformer</strong>，今天几乎所有大模型都是它的后代。</p>
+<p>注意力做的事，就是<strong>读每个字时回头看上文，给相关的字打”相关分”，分高的字聚光灯就亮</strong>。取重点时，按亮度加权——亮的字多听几分，暗的字少听几分：</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 440" style="max-width:100%;height:auto;" role="img" aria-label="注意力机制示意：句子 The animal didn't cross the street because it was too tired 中，it 的注意力连线指向 animal，亮线；指向 street，暗线">
+  <title>注意力：给相关的词打聚光灯</title>
+  <desc>读到 it 时，模型回头看上文：animal 拿到高分（亮线），street 拿到低分（暗线）。把 tired 换成 wide 后，聚光灯会跳到 street。</desc>
+  <rect x="0" y="0" width="860" height="440" rx="10" fill="#0d1117"></rect>
+  <text x="430" y="40" font-family="sans-serif" font-size="15" fill="#e5e7eb" text-anchor="middle" font-weight="bold">读到 "it" 时：回头给每个词打相关分</text>
+  <path d="M 553 148 Q 343 30 133 148" fill="none" stroke="#f59e0b" stroke-width="4"></path>
+  <text x="343" y="60" font-family="sans-serif" font-size="11.5" fill="#f59e0b" text-anchor="middle" font-weight="bold">分数高 → 聚光灯亮</text>
+  <path d="M 553 148 Q 498 90 443 148" fill="none" stroke="#4b5563" stroke-width="2"></path>
+  <text x="560" y="95" font-family="sans-serif" font-size="10.5" fill="#6b7280">分数低 → 光很暗</text>
+  <rect x="30" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#374151" stroke-width="1.5"></rect>
+  <text x="63" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">The</text>
+  <rect x="100" y="150" width="66" height="44" rx="8" fill="#1a2a3a" stroke="#f59e0b" stroke-width="2.5"></rect>
+  <text x="133" y="177" font-family="sans-serif" font-size="11" fill="#f59e0b" text-anchor="middle" font-weight="bold">animal</text>
+  <rect x="170" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#374151" stroke-width="1.5"></rect>
+  <text x="203" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">didn't</text>
+  <rect x="240" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#374151" stroke-width="1.5"></rect>
+  <text x="273" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">cross</text>
+  <rect x="310" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#374151" stroke-width="1.5"></rect>
+  <text x="343" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">the</text>
+  <rect x="380" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#4b5563" stroke-width="1.5"></rect>
+  <text x="413" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">street</text>
+  <rect x="450" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#374151" stroke-width="1.5"></rect>
+  <text x="483" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">because</text>
+  <rect x="520" y="150" width="66" height="44" rx="8" fill="#1a2a3a" stroke="#e5e7eb" stroke-width="2.5"></rect>
+  <text x="553" y="177" font-family="sans-serif" font-size="11" fill="#e5e7eb" text-anchor="middle" font-weight="bold">it</text>
+  <rect x="590" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#374151" stroke-width="1.5"></rect>
+  <text x="623" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">was</text>
+  <rect x="660" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#374151" stroke-width="1.5"></rect>
+  <text x="693" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">too</text>
+  <rect x="730" y="150" width="66" height="44" rx="8" fill="#0d1f2d" stroke="#374151" stroke-width="1.5"></rect>
+  <text x="763" y="177" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">tired</text>
+  <rect x="30" y="262" width="520" height="118" rx="12" fill="#111827" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="7 4"></rect>
+  <text x="290" y="294" font-family="sans-serif" font-size="12.5" fill="#e5e7eb" text-anchor="middle" font-weight="bold">同一句话，两个版本：</text>
+  <text x="290" y="322" font-family="sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">tired（累）→ "it" 的聚光灯打在 animal（动物）上</text>
+  <text x="290" y="350" font-family="sans-serif" font-size="12" fill="#9ca3af" text-anchor="middle">wide（宽）→ 聚光灯跳到 street（马路）上</text>
+  <rect x="580" y="262" width="250" height="118" rx="12" fill="#0d1f2d" stroke="#a78bfa" stroke-width="2"></rect>
+  <text x="705" y="296" font-family="sans-serif" font-size="12.5" fill="#a78bfa" text-anchor="middle" font-weight="bold">不止一束聚光灯</text>
+  <text x="705" y="322" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">几组灯并行：有的专盯"谁指谁"，</text>
+  <text x="705" y="342" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">有的盯"词怎么搭配"。原论文</text>
+  <text x="705" y="362" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle">一组 8 束灯，现代模型更多</text>
+  <text x="430" y="420" font-family="sans-serif" font-size="11" fill="#9ca3af" text-anchor="middle">图为示意。这个例句是注意力可视化的经典案例（Jay Alammar《The Illustrated Transformer》）</text>
+</svg>
+<figcaption>Figure 3. 注意力示意：读到 "it" 时给上文打相关分。例句出自 Jay Alammar 的经典图解，图由作者重绘。</figcaption>
+</figure>
+
+<p>更妙的是，这样的聚光灯不止一束，而是<strong>几束并行</strong>，各盯各的关系：有的专盯”谁指谁”，有的盯”词怎么搭配”，有的盯”意思相近”——这叫<strong>多头注意力</strong>。原论文的基础配置是 8 束（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/1706.03762">Vaswani et al.</a>，2017），现代大模型少则几十束、多则上百束。配上第一篇讲的”深层小筛子”，一层层往深里堆，就构成了 Transformer 的主体。那个 2017 年听起来最像口号的标题，如今看是句大实话：这些大模型里，除了注意力，确实没别的秘密。</p>
+<p>不过聚光灯有一个天生的限制：<strong>只能照到窗口内的字</strong>。这个窗口叫<strong>上下文窗口</strong>，就是”接龙时回头看多长的上文”。GPT-2 一场能读 1024 块积木；Llama 3 训练时读 8 千块，发布的最强版本能读 12.8 万块（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2407.21783">Meta 论文</a>，2024）；2025 年发布的 GPT-4.1 把窗口抬到了 100 万块（<a target="_blank" rel="noopener" href="https://openai.com/index/gpt-4-1/">OpenAI 官方博客</a>，2025-04）。窗口之外的，聚光灯照不到——模型就当没看见。这就是为什么聊了特别长的天，AI 会开始”忘事”：不是记性变差，是你早期的话掉出了窗口。</p>
+<h2 id="四、训练是上课，推理是上班"><a href="#四、训练是上课，推理是上班" class="headerlink" title="四、训练是上课，推理是上班"></a>四、训练是上课，推理是上班</h2><p><a id="sec-4"></a></p>
+<p>第一篇讲过”猜价格”循环：猜 → 对答案 → 拧旋钮。语言模型的训练就是这个循环，但藏着一个天才设计——<strong>教材不需要人工标注</strong>。</p>
+<p>想当年给认猫 AI 当”教材管理员”，得一张张照片贴标签（第一篇第四节）。文字接龙不用这么麻烦：<strong>互联网上的任何一段文字，把下一个字遮住，就是一道现成的考题；没遮住的原字，就是标准答案</strong>。教材免费、无限、自动生成。这就是语言模型的教材能堆到 15 万亿块、而认猫模型只能堆几万张的原因——不是工程师勤快，是互联网本来就是一份已经写好”答案”的题库。</p>
+<p>代价是算力。GPT-3 一次完整训练的计算量约 3.14×10²³ 次浮点运算（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2005.14165">GPT-3 论文附录 D</a>，2020）。按一台每秒 10 万亿次运算的游戏电脑估算，不吃不睡要算约 1000 年。现实里 OpenAI 用 V100 GPU 集群训练（论文 2.3 节记载其为微软提供的 V100 集群），上万块规模与数周工期，是按附录 D 的计算量与公开报道推算的量级。这笔账是第四节之前的隐藏答案：**”大”模型的大，是钱堆出来的**。</p>
+<p>然后是最容易误解的部分。训练结束，所有旋钮<strong>全部锁死</strong>——你今天和 ChatGPT 聊天，它做的只有”上班接龙”，不会把你说的每个字学进旋钮里：</p>
+<figure style="text-align:center;margin:2.5rem 0;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" style="max-width:100%;height:auto;" role="img" aria-label="训练与推理对比：左边训练是上课，读文本猜下一字对答案拧旋钮循环几千亿次；右边推理是上班，旋钮锁死只做接龙">
+  <title>训练是上课，推理是上班</title>
+  <desc>训练阶段：读海量文本、猜下一个字、对答案、拧旋钮，循环几千亿次。推理阶段：读你的问题、猜下一个字、接上去再猜，参数冻结不再变化。</desc>
+  <rect x="0" y="0" width="860" height="460" rx="10" fill="#0d1117"></rect>
+  <rect x="30" y="66" width="385" height="330" rx="14" fill="#0d1f2d" stroke="#f59e0b" stroke-width="2.5"></rect>
+  <text x="222" y="100" font-family="sans-serif" font-size="15" fill="#f59e0b" text-anchor="middle" font-weight="bold">训练：上课（旋钮在动）</text>
+  <rect x="90" y="122" width="265" height="40" rx="8" fill="#111827" stroke="#4b5563" stroke-width="1.5"></rect>
+  <text x="222" y="147" font-family="sans-serif" font-size="11.5" fill="#e5e7eb" text-anchor="middle">读海量文本（教材免费，15 万亿块）</text>
+  <rect x="90" y="178" width="265" height="40" rx="8" fill="#111827" stroke="#4b5563" stroke-width="1.5"></rect>
+  <text x="222" y="203" font-family="sans-serif" font-size="11.5" fill="#e5e7eb" text-anchor="middle">猜：下一个字是什么</text>
+  <rect x="90" y="234" width="265" height="40" rx="8" fill="#111827" stroke="#4b5563" stroke-width="1.5"></rect>
+  <text x="222" y="259" font-family="sans-serif" font-size="11.5" fill="#e5e7eb" text-anchor="middle">对答案（原文就是标准答案）</text>
+  <rect x="90" y="290" width="265" height="40" rx="8" fill="#111827" stroke="#f59e0b" stroke-width="1.5"></rect>
+  <text x="222" y="315" font-family="sans-serif" font-size="11.5" fill="#f59e0b" text-anchor="middle">拧旋钮 → 错误变小一点点</text>
+  <path d="M 90 310 C 40 310 40 142 88 142" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6 4"></path>
+  <polygon points="88,137 78,142 88,147" fill="#f59e0b"></polygon>
+  <text x="58" y="230" font-family="sans-serif" font-size="10.5" fill="#9ca3af" text-anchor="middle" transform="rotate(-90 58 230)">循环几千亿次</text>
+  <rect x="445" y="66" width="385" height="330" rx="14" fill="#0d1f2d" stroke="#22c55e" stroke-width="2.5"></rect>
+  <text x="637" y="100" font-family="sans-serif" font-size="15" fill="#22c55e" text-anchor="middle" font-weight="bold">推理：上班（旋钮锁死）</text>
+  <rect x="505" y="122" width="265" height="40" rx="8" fill="#111827" stroke="#4b5563" stroke-width="1.5"></rect>
+  <text x="637" y="147" font-family="sans-serif" font-size="11.5" fill="#e5e7eb" text-anchor="middle">读你的问题（进入上下文窗口）</text>
+  <rect x="505" y="178" width="265" height="40" rx="8" fill="#111827" stroke="#4b5563" stroke-width="1.5"></rect>
+  <text x="637" y="203" font-family="sans-serif" font-size="11.5" fill="#e5e7eb" text-anchor="middle">猜：下一个字是什么</text>
+  <rect x="505" y="234" width="265" height="40" rx="8" fill="#111827" stroke="#4b5563" stroke-width="1.5"></rect>
+  <text x="637" y="259" font-family="sans-serif" font-size="11.5" fill="#e5e7eb" text-anchor="middle">接上去，再猜下一个</text>
+  <rect x="505" y="290" width="265" height="40" rx="8" fill="#111827" stroke="#22c55e" stroke-width="1.5"></rect>
+  <rect x="519" y="298" width="10" height="14" rx="2" fill="none" stroke="#22c55e" stroke-width="1.8"></rect>
+  <path d="M 521 298 v-4 a3 3 0 0 1 6 0 v4" fill="none" stroke="#22c55e" stroke-width="1.8"></path>
+  <text x="637" y="315" font-family="sans-serif" font-size="11.5" fill="#22c55e" text-anchor="middle">参数冻结：不再学习</text>
+  <text x="430" y="432" font-family="sans-serif" font-size="11.5" fill="#9ca3af" text-anchor="middle">"AI 一直在偷偷学习我们说的话"是误解：你和它的对话只当接龙的材料，学不进旋钮——除非工程师花钱重新训练</text>
+</svg>
+<figcaption>Figure 4. 训练与推理对比：上课时旋钮在动，上班时旋钮锁死。作者绘制。</figcaption>
+</figure>
+
+<p>这个”上课&#x2F;上班”的区分，学名一个叫<strong>训练（training）</strong>，一个叫<strong>推理（inference）</strong>。区分它们，三个实际问题全有了答案：</p>
+<ul>
+<li><strong>为什么同一个 AI 永远不会”记住你教它的事”？</strong>——你的话只进了上下文窗口（这一场”上文”），没进旋钮。关掉窗口，全忘。（真想让它”学会”你的偏好，要么开新对话重新贴上文，要么等厂商拿数据做下一轮训练——那是下一门”新课”。）</li>
+<li><strong>为什么 AI 打字一个字一个字蹦？</strong>——上班的内容就是逐块接龙。</li>
+<li><strong>为什么手机也能跑 AI 了？</strong>——上课要上千块芯片（上图左），上班只要一块手机芯片能扛的算力（上图右），几十亿旋钮的小模型也扛得住。第一篇里我们在浏览器里十分钟训练过自己的 AI；现在小模型连推理都能在手机上跑，<a href="https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/">AI Edge Gallery 架构解析</a>和<a href="https://blog.shuying.me/2026/10/24/gemma-3n-android-llm-tuning/">Gemma 3n 端侧实测</a>记录了这条路线的工程细节。</li>
+</ul>
+<h2 id="五、今天就动手：在浏览器里拆开一个真的-GPT-2"><a href="#五、今天就动手：在浏览器里拆开一个真的-GPT-2" class="headerlink" title="五、今天就动手：在浏览器里拆开一个真的 GPT-2"></a>五、今天就动手：在浏览器里拆开一个真的 GPT-2</h2><p><a id="sec-5"></a></p>
+<p>读到这里，接龙、token、注意力、训练&#x2F;推理四个零件你都认识了。现在把它们一个个看进眼里。</p>
+<p>打开 <a target="_blank" rel="noopener" href="https://poloclub.github.io/transformer-explainer/">Transformer Explainer</a>——佐治亚理工学院团队做的免费网页，不用注册、不用安装，直接在<strong>你的浏览器里跑一个真实的 GPT-2</strong>（1.24 亿参数，2019 年的模型）。它不是动画演示，是真模型真推理，你看到的概率和连线都是它算出来的（配套论文发表在 IEEE VIS 2024，<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2405.00208">arXiv:2405.00208</a>）。</p>
+<p>三个观察任务，从易到难：</p>
+<ol>
+<li><strong>找 token</strong>：在输入框打一句英文，看它被切成了哪几块——数一数 “unbelievable” 是几块。</li>
+<li><strong>看聚光灯</strong>：把鼠标悬停在输出端，逐层点开，找到注意力（attention）模块，看连线从哪连到哪，亮线多还是暗线多。</li>
+<li><strong>拆台</strong>：把输入句里的一个词换成反义词，看那张概率表怎么变。2019 年的 GPT-2 很容易出错，<strong>每个错误都是好素材</strong>：它接错的地方，正是它没学会的常识。</li>
+</ol>
+<p>想数自己名字是几块积木，还有个更直接的玩具：OpenAI 的 <a target="_blank" rel="noopener" href="https://platform.openai.com/tokenizer">Tokenizer 演示页</a>，输入任何文本，实时显示切块和编号。界面是英文的，正好当第一次实战翻译。想看更炫的动画讲解，3Blue1Brown 的《But what is a GPT?》（神经网络系列第五章）值得一个晚自习。</p>
+<h2 id="六、猜字大师，不是懂字大师"><a href="#六、猜字大师，不是懂字大师" class="headerlink" title="六、猜字大师，不是懂字大师"></a>六、猜字大师，不是懂字大师</h2><p><a id="sec-6"></a></p>
+<p>回到第一篇埋下的问题：AI 为什么会一本正经地说错话？现在你可以自己回答了。</p>
+<p>它的世界里没有”这句话是不是事实”这个开关，只有”这句话像不像人话”这张概率表。接龙接得越顺，越像人话；但<strong>像人话不等于真事</strong>——“他每天早餐吃石头”接龙毫无难度，读起来还很流畅。这和第一篇的结论”AI 在猜概率，不是在知道”是同一件事，只是今天你看到了那个”猜”字底下完整的机器。</p>
+<p>好消息是，”像”和”对”大部分时候重合——因为教材是真实世界写的，15 万亿块积木把现实的语言规律几乎全刻进了旋钮里。科学家发现这里还有个配平关系：旋钮不是越多越好，教材得跟得上——参数和训练数据按比例配平，模型才学得又大又稳（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2203.15556">Chinchilla 论文</a>，DeepMind，2022）。换句话说，大模型的聪明，一半是旋钮，一半是教材。</p>
+<p>最后轮到你出场。接龙游戏的”上文”，一半是教材写的，一半是你现场提供的——<strong>你问出的问题，就是它接龙的上文</strong>。问题问得清楚、背景给得具体，聚光灯才有明确的目标；问题含含糊糊，它只能对着一片模糊的”上文”掷骰子。用好 AI 的第一条诀窍，不在它那边，在你的键盘上。</p>
+<h2 id="FAQ"><a href="#FAQ" class="headerlink" title="FAQ"></a>FAQ</h2><p><a id="sec-faq"></a></p>
+<h3 id="为什么同一个问题，AI-每次回答都不一样？"><a href="#为什么同一个问题，AI-每次回答都不一样？" class="headerlink" title="为什么同一个问题，AI 每次回答都不一样？"></a>为什么同一个问题，AI 每次回答都不一样？</h3><p>因为它真的在掷骰子。Figure 1 里那张概率表，每次都不是”选第一名”而是”按概率抽签”——概率高的字被抽中的机会大，但不是必中。有个叫”温度（temperature）”的旋钮管抽签的胆子：调低，永远选最稳的；调高，更敢冒险。所以让 AI 写诗时答案五花八门，问算术时基本稳定——工程师会按任务调这个旋钮。</p>
+<h3 id="AI-真的”懂”文字吗？"><a href="#AI-真的”懂”文字吗？" class="headerlink" title="AI 真的”懂”文字吗？"></a>AI 真的”懂”文字吗？</h3><p>这是科学家自己都在吵的问题，没有标准答案。能确定的是：要接好龙，它必须掌握语言规律和海量世界常识（否则 “it” 指不出 animal）；不能确定的是：这种”懂”和人的”懂”是不是一回事。本篇的建议态度和第一篇一致：把它当<strong>博学但会一本正经说错话的朋友</strong>，人负责判断，它负责干活。</p>
+<h3 id="为什么-AI-会忘记很早之前说过的话？"><a href="#为什么-AI-会忘记很早之前说过的话？" class="headerlink" title="为什么 AI 会忘记很早之前说过的话？"></a>为什么 AI 会忘记很早之前说过的话？</h3><p>上下文窗口有限。聚光灯只能照进窗口内的积木块，GPT-2 只有 1024 块，GPT-4.1 有 100 万块。你最早的话一旦掉出窗口，模型就真的”看不见”了——不是忘了，是从来没带着它上班。所以长对话中途，把关键信息再贴一次，比怪它健忘有用。</p>
+<h3 id="想再深入，接下来看什么？"><a href="#想再深入，接下来看什么？" class="headerlink" title="想再深入，接下来看什么？"></a>想再深入，接下来看什么？</h3><p>按顺序：先把 Transformer Explainer 里的三层（token → attention → 输出概率）点一遍；然后读 Jay Alammar 的图解文章《The Illustrated Transformer》（<a target="_blank" rel="noopener" href="https://jalammar.github.io/illustrated-transformer/">jalammar.github.io</a>，2018），把本篇的比喻换成真实术语；再往后，就是第一篇结尾那句话的续集了——上完中学这堂课，可以看看大学的公开课和论文了。</p>
+<p><strong>相关阅读：</strong> <a href="https://blog.shuying.me/2026/09/22/2026-09-22-deep-learning-for-kids/">深度学习是什么？一篇让小孩子也能读懂的 AI 入门教程</a> ｜ <a href="https://blog.shuying.me/2026/08/22/2026-08-22-ai-edge-gallery-architecture/">AI Edge Gallery 架构解析：端侧大模型是怎么跑进手机的</a> ｜ <a href="https://blog.shuying.me/2026/10/24/gemma-3n-android-llm-tuning/">端侧大模型实测：Gemma 3n 在 Android 上的性能、内存与功耗调优</a></p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/11/01/llm-transformer-for-students/" title="大语言模型是什么？写给中学生的 Transformer 入门">https://blog.shuying.me/2026/11/01/llm-transformer-for-students/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/AI-%E7%A7%91%E6%99%AE/" rel="tag"># AI 科普</a>
+              <a href="/tags/%E5%A4%A7%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B/" rel="tag"># 大语言模型</a>
+              <a href="/tags/Transformer/" rel="tag"># Transformer</a>
+              <a href="/tags/LLM/" rel="tag"># LLM</a>
+              <a href="/tags/%E6%B3%A8%E6%84%8F%E5%8A%9B%E6%9C%BA%E5%88%B6/" rel="tag"># 注意力机制</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/10/30/android-build-speedup-2026/" rel="prev" title="2026 版 Android 构建提速：Configuration Cache、KSP2 与构建扫描实战">
+      <i class="fa fa-chevron-left"></i> 2026 版 Android 构建提速：Configuration Cache、KSP2 与构建扫描实战
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E3%80%81%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B%EF%BC%9A%E4%B8%80%E5%9C%BA%E6%96%87%E5%AD%97%E6%8E%A5%E9%BE%99"><span class="nav-number">1.</span> <span class="nav-text">一、语言模型：一场文字接龙</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%8C%E3%80%81AI-%E4%B8%8D%E8%AE%A4%E8%AF%86%E5%AD%97%EF%BC%8C%E5%8F%AA%E8%AE%A4%E8%AF%86%E7%A7%AF%E6%9C%A8%E5%9D%97%EF%BC%9Atoken"><span class="nav-number">2.</span> <span class="nav-text">二、AI 不认识字，只认识积木块：token</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%89%E3%80%81Transformer%EF%BC%9A%E7%BB%99%E6%8E%A5%E9%BE%99%E9%80%89%E6%89%8B%E8%A3%85%E4%B8%8A%E2%80%9D%E6%B3%A8%E6%84%8F%E5%8A%9B%E8%81%9A%E5%85%89%E7%81%AF%E2%80%9D"><span class="nav-number">3.</span> <span class="nav-text">三、Transformer：给接龙选手装上”注意力聚光灯”</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9B%E3%80%81%E8%AE%AD%E7%BB%83%E6%98%AF%E4%B8%8A%E8%AF%BE%EF%BC%8C%E6%8E%A8%E7%90%86%E6%98%AF%E4%B8%8A%E7%8F%AD"><span class="nav-number">4.</span> <span class="nav-text">四、训练是上课，推理是上班</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%94%E3%80%81%E4%BB%8A%E5%A4%A9%E5%B0%B1%E5%8A%A8%E6%89%8B%EF%BC%9A%E5%9C%A8%E6%B5%8F%E8%A7%88%E5%99%A8%E9%87%8C%E6%8B%86%E5%BC%80%E4%B8%80%E4%B8%AA%E7%9C%9F%E7%9A%84-GPT-2"><span class="nav-number">5.</span> <span class="nav-text">五、今天就动手：在浏览器里拆开一个真的 GPT-2</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD%E3%80%81%E7%8C%9C%E5%AD%97%E5%A4%A7%E5%B8%88%EF%BC%8C%E4%B8%8D%E6%98%AF%E6%87%82%E5%AD%97%E5%A4%A7%E5%B8%88"><span class="nav-number">6.</span> <span class="nav-text">六、猜字大师，不是懂字大师</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#FAQ"><span class="nav-number">7.</span> <span class="nav-text">FAQ</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E5%90%8C%E4%B8%80%E4%B8%AA%E9%97%AE%E9%A2%98%EF%BC%8CAI-%E6%AF%8F%E6%AC%A1%E5%9B%9E%E7%AD%94%E9%83%BD%E4%B8%8D%E4%B8%80%E6%A0%B7%EF%BC%9F"><span class="nav-number">7.1.</span> <span class="nav-text">为什么同一个问题，AI 每次回答都不一样？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#AI-%E7%9C%9F%E7%9A%84%E2%80%9D%E6%87%82%E2%80%9D%E6%96%87%E5%AD%97%E5%90%97%EF%BC%9F"><span class="nav-number">7.2.</span> <span class="nav-text">AI 真的”懂”文字吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-AI-%E4%BC%9A%E5%BF%98%E8%AE%B0%E5%BE%88%E6%97%A9%E4%B9%8B%E5%89%8D%E8%AF%B4%E8%BF%87%E7%9A%84%E8%AF%9D%EF%BC%9F"><span class="nav-number">7.3.</span> <span class="nav-text">为什么 AI 会忘记很早之前说过的话？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%83%B3%E5%86%8D%E6%B7%B1%E5%85%A5%EF%BC%8C%E6%8E%A5%E4%B8%8B%E6%9D%A5%E7%9C%8B%E4%BB%80%E4%B9%88%EF%BC%9F"><span class="nav-number">7.4.</span> <span class="nav-text">想再深入，接下来看什么？</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">31</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">11</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">49</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
