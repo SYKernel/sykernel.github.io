@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 6.1.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/avatar.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon.ico">
+  <link rel="mask-icon" href="/images/avatar.png" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+<link rel="stylesheet" href="https://fonts.loli.net/css?family=Noto Sans SC:300,300italic,400,400italic,700,700italic&display=swap&subset=latin,latin-ext">
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.shuying.me","root":"/","scheme":"Gemini","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"default"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="规则文件、MCP 记忆服务器、外部向量库怎么选？三问决策法与七维对比表，拆解 LoCoMo 评测乱象，附一个真实发布流水线的选型复盘。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Agent 记忆系统横评：规则文件、MCP 与外部向量库怎么选">
+<meta property="og:url" content="https://blog.shuying.me/2026/11/02/agent-memory-systems-comparison/index.html">
+<meta property="og:site_name" content="枢影Kernel">
+<meta property="og:description" content="规则文件、MCP 记忆服务器、外部向量库怎么选？三问决策法与七维对比表，拆解 LoCoMo 评测乱象，附一个真实发布流水线的选型复盘。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.shuying.me/images/agent-memory-systems-comparison-cover.png">
+<meta property="article:published_time" content="2026-11-02T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-11-01T16:00:00.000Z">
+<meta property="article:author" content="枢影">
+<meta property="article:tag" content="MCP">
+<meta property="article:tag" content="Agent 记忆">
+<meta property="article:tag" content="CLAUDE.md">
+<meta property="article:tag" content="RAG">
+<meta property="article:tag" content="向量数据库">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.shuying.me/images/agent-memory-systems-comparison-cover.png">
+
+<link rel="canonical" href="https://blog.shuying.me/2026/11/02/agent-memory-systems-comparison/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Agent 记忆系统横评：规则文件、MCP 与外部向量库怎么选 | 枢影Kernel</title>
+  
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-122582412-1"></script>
+    <script>
+      if (CONFIG.hostname === location.hostname) {
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-122582412-1');
+      }
+    </script>
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">枢影Kernel</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">Focus On Android</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://blog.shuying.me/2026/11/02/agent-memory-systems-comparison/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.png">
+      <meta itemprop="name" content="枢影">
+      <meta itemprop="description" content="Focus On Android">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="枢影Kernel">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Agent 记忆系统横评：规则文件、MCP 与外部向量库怎么选
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-11-02 09:00:00 / 修改时间：00:00:00" itemprop="dateCreated datePublished" datetime="2026-11-02T09:00:00+08:00">2026-11-02</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/AI%E5%B7%A5%E7%A8%8B/" itemprop="url" rel="index"><span itemprop="name">AI工程</span></a>
+                </span>
+            </span>
+
+          
+            <div class="post-description">规则文件、MCP 记忆服务器、外部向量库怎么选？三问决策法与七维对比表，拆解 LoCoMo 评测乱象，附一个真实发布流水线的选型复盘。</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <div class="post-gallery" itemscope itemtype="http://schema.org/ImageGallery">
+            <img src="/images/agent-memory-systems-comparison-cover.png" itemprop="contentUrl">
+        </div>
+        <p><a href="https://blog.shuying.me/2026/08/25/2026-08-25-codex-vs-deepseek-harness/">上一篇 Harness 架构对比</a>给过一个判断：Agent &#x3D; Model + Harness，而 harness 决定模型能记住什么、能改什么、敢托付什么。那次对比停在架构哲学层面，这次往里走一层，聚焦其中最容易被低估的一块——<strong>记忆</strong>。同样跑任务的 Agent，有的每次都从零开始，有的把你上次的纠错记一辈子；差距不在模型，在记忆方案。</p>
+<p>2026 年这个选择的紧迫感来自两头同时发生的事。一边，AGENTS.md 已成为开放标准，被 <a target="_blank" rel="noopener" href="https://agents.md/">30,000 多个项目</a>采用，OpenAI Codex、Cursor、Gemini CLI 与 Claude Code 全部支持，”文件即记忆”成了默认起点；另一边，ChatGPT 在 2025 年 4 月把记忆升级为”引用全部历史会话”（Plus&#x2F;Pro 先行，<a target="_blank" rel="noopener" href="https://techcrunch.com/2025/04/10/openai-improves-chatgpts-memory-but-some-users-are-wary/">TechCrunch</a>，2025-04-10）；到 2025 年 10 月 DevDay，ChatGPT 周活已达约 8 亿（<a target="_blank" rel="noopener" href="https://techcrunch.com/2025/10/06/chatgpts-weekly-users-have-grown-4x-since-last-years-openai-dev-day/">TechCrunch</a>，2025-10-06），记忆成了规模化产品的默认能力。同时 Mem0、Zep、Letta 等记忆框架在开发者侧疯狂内卷，MCP 记忆服务器也一发不可收。三条路线都在成熟，但没有一条全赢——<strong>记什么、谁来记、放哪里</strong>，这三个问题没有单一答案，只有和你场景匹配的答案。</p>
+<p>本文把三条路线放进同一个坐标系横评：规则文件（CLAUDE.md &#x2F; AGENTS.md 类）、MCP 记忆服务器、外部向量库&#x2F;RAG，最后用我自己在维护的一个博客发布流水线做真实选型复盘。所有关键数字都标注来源与日期，评测争议的部分单独拆开讲清楚。</p>
+<blockquote><p><strong>Key Takeaways</strong></p><ul>
+<li>Agent 记忆有三条正交轴：<strong>写入路径</strong>（人工 vs 自动）、<strong>读取路径</strong>（全量注入 vs 检索 vs 查询）、<strong>规模上限</strong>。三条路线的差异都能还原到这三根轴上，先分清轴再选型。</li>
+<li>规则文件（CLAUDE.md/AGENTS.md）赢在<strong>审计与确定性</strong>：git 可查、版本可回滚、成本近乎为零，但靠人肉维护、有 32KB 量级的实用上限（AGENTS.md 已获 30,000+ 项目采用）。</li>
+<li>MCP 记忆服务器赢在<strong>自动沉淀与跨工具共享</strong>：官方知识图谱服务器 9 个工具开箱即用，Zep/Mem0 支持时序推理，但写入质量依赖 LLM 提炼，存在记忆污染风险。</li>
+<li>外部向量库赢在<strong>规模</strong>，输在<strong>新鲜度债</strong>：陈旧嵌入已被列为检索系统的一等失败模式（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2509.13303">Agent-as-Judge</a>，2025），保持索引新鲜的刷新成本是每次查询的 1.54–3.47 倍（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2505.01931">arXiv:2505.01931</a>，2025）。</li>
+<li>LoCoMo 榜单不可尽信：每家厂商都自称第一且数字互相矛盾，朴素向量 RAG 常常打平花哨框架——用你自己的工作负载自建评测，而不是看榜单选型。</li>
+</ul></blockquote>
+
+<p class="toc"><strong>本文目录</strong>：<a href="#sec-1">一、记忆的三条正交轴</a> · <a href="#sec-2">二、快速对比</a> · <a href="#sec-3">三、规则文件</a> · <a href="#sec-4">四、MCP 记忆服务器</a> · <a href="#sec-5">五、外部向量库</a> · <a href="#sec-6">六、评测乱象</a> · <a href="#sec-7">七、三问决策法</a> · <a href="#sec-8">八、真实项目复盘</a> · <a href="#sec-9">九、结论</a> · <a href="#sec-faq">FAQ</a></p>
+
+<h2 id="一、先把问题定义清楚：记忆的三条正交轴"><a href="#一、先把问题定义清楚：记忆的三条正交轴" class="headerlink" title="一、先把问题定义清楚：记忆的三条正交轴"></a>一、先把问题定义清楚：记忆的三条正交轴</h2><p><a id="sec-1"></a></p>
+<p>在比较方案之前，先把”记忆”拆开。讨论 Agent 记忆时，多数混乱来自把三件不同的事混在一句话里说，它们各自独立、互不决定：</p>
+<p><strong>轴一：写入路径——记忆是谁写的？</strong> 人工写的（你在 markdown 里记下团队约定）、Agent 运行时自动写的（对话结束自动沉淀事实）、还是管线批量写的（把历史语料跑一遍嵌入）。写入路径决定了记忆的可信度从哪里来：人工写入的每一条都有人背书，自动写入的每一条都依赖那次 LLM 提炼的质量。</p>
+<p><strong>轴二：读取路径——记忆怎么被用？</strong> 全量注入（整个记忆文件每次都塞进上下文）、按需检索（先查再取，只取相关片段）、工具查询（把记忆当外部数据源，通过 API 拿）。读取路径决定成本结构：全量注入按 token 付费且随规模线性涨，检索方案多一层”查不查得准”的风险。</p>
+<p><strong>轴三：规模上限——记忆能长到多大？</strong> 全量注入受上下文窗口硬约束，社区实践普遍建议单文件控制在 32KB、300 行以内，40KB 以上的臃肿文件会稀释指令遵循（HumanLayer 的<a target="_blank" rel="noopener" href="https://www.humanlayer.dev/">七组实验</a>与社区共识）；检索方案的规模上限取决于存储与索引，可以到百万级片段。</p>
+<p>这三根轴画出来，三条路线的位置就清楚了：**规则文件是”人工写 + 全量读 + 小规模”<strong>；</strong>MCP 记忆服务器是”自动写 + 查询读 + 中等规模”<strong>；</strong>外部向量库是”管线写 + 检索读 + 大规模”**。没有哪个方案同时占优三根轴，所以选型本质上是判断：你的场景在哪根轴上的要求最苛刻。</p>
+<h2 id="二、快速对比"><a href="#二、快速对比" class="headerlink" title="二、快速对比"></a>二、快速对比</h2><p><a id="sec-2"></a></p>
+<p>先给一张能停在决策阶段的表，后文逐项展开。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>规则文件（CLAUDE.md&#x2F;AGENTS.md）</th>
+<th>MCP 记忆服务器</th>
+<th>外部向量库 &#x2F; RAG</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>写入路径</td>
+<td>人工维护，git 版本化</td>
+<td>Agent 运行时自动沉淀</td>
+<td>管线批量嵌入 + 增量更新</td>
+</tr>
+<tr>
+<td>读取路径</td>
+<td>全量注入上下文</td>
+<td>工具调用按需查询</td>
+<td>语义检索 top-k</td>
+</tr>
+<tr>
+<td>规模上限</td>
+<td>~32KB &#x2F; 300 行（社区共识）</td>
+<td>中等，取决于图规模</td>
+<td>百万级 chunk</td>
+</tr>
+<tr>
+<td>审计与回滚</td>
+<td>最强：diff、PR、回滚一把梭</td>
+<td>弱：写入分散在运行日志里</td>
+<td>中：数据可查但嵌入难审</td>
+</tr>
+<tr>
+<td>新鲜度</td>
+<td>人工更新，容易过期但看得见</td>
+<td>写入时更新，需防污染</td>
+<td>最大坑：陈旧嵌入是静默失败</td>
+</tr>
+<tr>
+<td>起步成本</td>
+<td>几乎为零，写个文件就行</td>
+<td>一条 npx 命令 + MCP 配置</td>
+<td>需要嵌入服务 + 向量库 + 运维</td>
+</tr>
+<tr>
+<td>典型场景</td>
+<td>团队约定、项目惯例、编码规范</td>
+<td>个人助理、跨会话个性化</td>
+<td>海量文档问答、多源知识库</td>
+</tr>
+</tbody></table>
+<p>一句话版本：<strong>变化慢、要审计的知识交给规则文件；Agent 自己产出的经验交给 MCP 记忆服务器；规模大到注入不动的大语料才上向量库。</strong></p>
+<h2 id="三、方案一：规则文件——最土，也最难被替代"><a href="#三、方案一：规则文件——最土，也最难被替代" class="headerlink" title="三、方案一：规则文件——最土，也最难被替代"></a>三、方案一：规则文件——最土，也最难被替代</h2><p><a id="sec-3"></a></p>
+<p>规则文件路线的代表是 CLAUDE.md 和 AGENTS.md：把项目约定写成 markdown，Agent 每次启动时读入。它的全部优势与全部局限，都来自”人工写、全量读”这个组合。</p>
+<p><strong>它赢在审计与确定性，这一点目前没有替代品。</strong> 规则文件活在 git 里，每一处修改都有 diff、有 commit message、有 reviewer——记忆出错时你能精确回答”哪次提交引入的”。Anthropic 官方文档定义了清晰的<a target="_blank" rel="noopener" href="https://code.claude.com/docs/en/memory">记忆层级</a>（企业策略 → 用户级 <code>~/.claude/CLAUDE.md</code> → 项目级 <code>CLAUDE.md</code>&#x2F;<code>AGENTS.md</code> → 个人级 <code>CLAUDE.local.md</code>），每层职责分明。而且 AGENTS.md 的标准化让一份文件服务所有工具：OpenAI Codex、Cursor、Gemini CLI 都认它，Claude Code 在没有 CLAUDE.md 时也会自动回退读 AGENTS.md——投资一份文件，回报覆盖整个工具链。</p>
+<p><strong>它的上限是规模与人肉维护。</strong> 全量注入意味着文件越长，每次会话的基础 token 成本越高，而且社区实践反复验证：超过 32KB 的臃肿文件会稀释关键指令的遵循率。更现实的问题是写入全靠人：项目变了要记得改文件，改完只对新会话生效。规则文件记不住”这周我们临时决定先跳过类型检查”这种短生命周期信息——它天生适合慢变化的知识，不适合快变化的状态。</p>
+<p>适用判据：<strong>知识以月为单位变化、需要团队审计、单人或小团队维护</strong>。这三条里占两条以上，规则文件就是你的主战场。</p>
+<h2 id="四、方案二：MCP-记忆服务器——把记忆协议化"><a href="#四、方案二：MCP-记忆服务器——把记忆协议化" class="headerlink" title="四、方案二：MCP 记忆服务器——把记忆协议化"></a>四、方案二：MCP 记忆服务器——把记忆协议化</h2><p><a id="sec-4"></a></p>
+<p>MCP 记忆服务器路线的核心主张是：记忆不该是某个特定 Agent 的私有实现，而应该是任何 Agent 都能接的标准服务。Agent 干完活，把值得记的事实自动沉淀到记忆服务；下次开工，通过工具调用按需取回。</p>
+<p><strong>最轻的起点是官方知识图谱服务器。</strong> <a target="_blank" rel="noopener" href="https://github.com/modelcontextprotocol/servers/tree/main/src/memory">@modelcontextprotocol&#x2F;server-memory</a> 用”实体—关系—观察”三元组建模记忆（比如”项目A —使用— KSP2”是一个关系，”KSP2 在 2026 年已 GA”是一条观察），提供 9 个工具（建实体、加观察、搜节点、读全图等），数据经 <code>MEMORY_FILE_PATH</code> 落到本地 JSON 文件。它刻意做得很薄：没有嵌入、没有排序算法，就是一个可持久化的结构化小本本——但这恰恰意味着零外部依赖、行为完全可预期，一条 <code>npx</code> 命令就能跑起来。</p>
+<p><strong>社区生态按需求分层往上加。</strong> <a target="_blank" rel="noopener" href="https://github.com/alioshr/memory-bank-mcp">memory-bank-mcp</a> 把记忆组织成结构化 markdown（项目简报、活动上下文、决策日志），本质是”会自我更新的规则文件”；<a target="_blank" rel="noopener" href="https://github.com/getzep/graphiti">Zep 的 Graphiti</a> 用双时态（bi-temporal）知识图谱记录”事实什么时候成立、什么时候失效”，后端接 Neo4j&#x2F;FalkorDB，擅长回答”这个结论现在还成立吗”；Mem0 提供<a target="_blank" rel="noopener" href="https://mem0.ai/">托管 MCP 服务</a>与本地化的 OpenMemory，强调跨会话的个性化。选型的分界线很清楚：<strong>要确定性选图谱服务器，要时序推理选 Graphiti，要开箱即用的托管服务选 Mem0。</strong></p>
+<p>这条路还有一个常被忽略的变体：<strong>工具即记忆</strong>。不复制数据，直接让 Agent 通过 MCP 查内部工单系统、文档平台——记忆的”真相源”留在业务系统里，Agent 每次现查，新鲜度问题从根上消解（详见前作 <a href="https://blog.shuying.me/2026/10/26/mcp-server-production/">MCP 实战：为团队基础设施写一个生产级 MCP Server</a>）。</p>
+<p>它的主要风险同样明确：<strong>写入是自动的，错误也是自动的。</strong> Agent 提炼出一条错误事实写进图谱，后续所有会话都会引用它，而且没有 diff 审查这一关。把”记住”当成写操作来设计——定期审查记忆内容、提供删除工具、对重要事实要求人工确认（做法同<a href="https://blog.shuying.me/2026/09/21/2026-09-21-skillopt-code-review-skill/">把 code review 流程固化为技能的实践</a>：审查要有清单与触发时机）——是这个方案能不能长期用的分水岭。</p>
+<h2 id="五、方案三：外部向量库——规模的天花板，新鲜度的地板"><a href="#五、方案三：外部向量库——规模的天花板，新鲜度的地板" class="headerlink" title="五、方案三：外部向量库——规模的天花板，新鲜度的地板"></a>五、方案三：外部向量库——规模的天花板，新鲜度的地板</h2><p><a id="sec-5"></a></p>
+<p>第三条路线把记忆当成检索问题：语料切块、嵌入、入向量库，Agent 每次按语义查 top-k。它的规模上限最高——百万级 chunk 也能亚秒级返回，这是前两条路线做不到的。</p>
+<p><strong>但 2025 年以来最集中的批评，恰恰指向它的软肋：新鲜度。</strong> 检索系统不会告诉你”这条记忆过期了”，它只会安静地把一条两年前的事实返回给你。<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2509.13303">Agent-as-Judge 基准</a>（arXiv，2025-09）把”过时上下文、陈旧向量库嵌入”明确列为一等失败模式；<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2505.01931">RAG 能耗研究</a>（arXiv:2505.01931，2025）量化了维持新鲜的代价：长期运行的会话式 RAG，索引刷新成本是单次查询的 1.54–3.47 倍，嵌入与语料的漂移是主要经常性开销。MemoryOS（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2505.24433">arXiv:2505.24433</a>，2025）干脆用操作系统式的 FIFO 衰减来对抗过期；Mem0 的论文（<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2504.19413">arXiv:2504.19413</a>，2025-04）用两阶段管线在写入时执行 ADD&#x2F;UPDATE&#x2F;DELETE，显式作废陈旧记忆。各家都在补这一课，也说明：<strong>选向量库 &#x3D; 签一份新鲜度维护合同，合同没人免费履行。</strong></p>
+<p><strong>第二个反直觉的发现：检索未必比”笨办法”便宜或更准。</strong> 滑铁卢大学团队 2025 年 6 月的<a target="_blank" rel="noopener" href="https://arxiv.org/abs/2506.13159">系统综述</a>（659 篇论文）结论是 RAG 与长上下文不是替代关系，混合方案最优，而且随着模型抗噪能力提升，RAG 的成本优势正在缩小。Prompt caching 把”全量注入很贵”的前提又削了一刀：Anthropic 的缓存读取按输入价的 10% 计费（写入 1.25 倍，<a target="_blank" rel="noopener" href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching">官方定价文档</a>，检索于 2026-11-02），Gemini 2.5 Flash 缓存读取约 0.25 倍外加存储费（<a target="_blank" rel="noopener" href="https://ai.google.dev/gemini-api/docs/pricing">Gemini API 定价</a>，检索于 2026-11-02）。量级不大的知识库，”全量塞进去 + 缓存吃折扣”可能比维护一套检索基础设施更划算。</p>
+<p><strong>第三，检索质量本身有方差。</strong> Mem0 论文给出的数据是：prompt 长度每上升 1%，Llama-3.1-8B 的错误率上升 3.85%——检索回来的相关片段太少（模型缺上下文）与太多（噪声稀释注意力）都是坑。规模才是向量库的入场券：语料小，别上；语料大到全量注入物理不可行，或多个数据源必须统一检索，才轮到它出场。</p>
+<h2 id="六、LoCoMo-榜单别太当真：一场各说各话的评测混战"><a href="#六、LoCoMo-榜单别太当真：一场各说各话的评测混战" class="headerlink" title="六、LoCoMo 榜单别太当真：一场各说各话的评测混战"></a>六、LoCoMo 榜单别太当真：一场各说各话的评测混战</h2><p><a id="sec-6"></a></p>
+<p>如果你去搜”哪个记忆框架最好”，会得到一组互相矛盾的数字，这是本文写作过程中最值得单独讲的一个发现。</p>
+<figure>
+<svg viewBox="0 0 560 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LoCoMo 基准上各框架与基线报告的准确率分数条形图，标注自报与第三方口径">
+  <text x="280" y="30" text-anchor="middle" font-size="17" font-weight="bold" fill="#1a365d">LoCoMo 上的"最佳记忆方案"：同一榜单，四套口径</text>
+  <text x="280" y="52" text-anchor="middle" font-size="11" fill="#6b7280">数字来自各厂商或引用方，测试配置不同，不可直接横向比较</text>
+  <!-- Hindsight 95.2 自报 -->
+  <rect x="170" y="70" width="314" height="30" rx="4" fill="#2563eb"></rect>
+  <text x="160" y="90" text-anchor="end" font-size="12" fill="#374151">Hindsight（自报）</text>
+  <text x="492" y="90" font-size="12" font-weight="bold" fill="#2563eb">95.2%</text>
+  <!-- Letta 文件系统基线 74.0 -->
+  <rect x="170" y="112" width="244" height="30" rx="4" fill="#93c5fd"></rect>
+  <text x="160" y="132" text-anchor="end" font-size="12" fill="#374151">文件系统基线（Letta 测）</text>
+  <text x="422" y="132" font-size="12" font-weight="bold" fill="#1d4ed8">74.0%</text>
+  <!-- Mem0 73.4 引用口径 -->
+  <rect x="170" y="154" width="242" height="30" rx="4" fill="#93c5fd"></rect>
+  <text x="160" y="174" text-anchor="end" font-size="12" fill="#374151">Mem0（第三方引用口径）</text>
+  <text x="420" y="174" font-size="12" font-weight="bold" fill="#1d4ed8">73.4%</text>
+  <!-- Mem0 graph 68.5 自报 -->
+  <rect x="170" y="196" width="226" height="30" rx="4" fill="#2563eb"></rect>
+  <text x="160" y="216" text-anchor="end" font-size="12" fill="#374151">Mem0 图记忆（自报）</text>
+  <text x="404" y="216" font-size="12" font-weight="bold" fill="#2563eb">68.5%</text>
+  <!-- 图例 -->
+  <rect x="60" y="300" width="14" height="14" fill="#2563eb"></rect>
+  <text x="82" y="312" font-size="11" fill="#374151">厂商自报成绩</text>
+  <rect x="200" y="300" width="14" height="14" fill="#93c5fd"></rect>
+  <text x="222" y="312" font-size="11" fill="#374151">第三方或引用方测量</text>
+  <text x="60" y="350" font-size="11" fill="#6b7280">来源：文件系统基线 74.0 与 Mem0 图记忆 68.5 见 Letta 博客（2025-08-12）；</text>
+  <text x="60" y="368" font-size="11" fill="#6b7280">Hindsight 95.2 与 Mem0 73.4 见 vectorize.io 对比文（2025）。各口径测试配置不同。</text>
+</svg>
+<figcaption>图 1：LoCoMo 基准的各家口径。注意"文件系统基线"（把对话历史存成文件让 Agent 自己翻）拿了 74.0%，比花哨的记忆框架自报分数还高。</figcaption>
+</figure>
+
+<p>拆解这场混战：Mem0 论文（2025-04）宣称在 LoCoMo 上准确率相对提升 26%、p95 延迟 1.44 秒（全上下文方案为 17.12 秒）；Zep 随即发文<a target="_blank" rel="noopener" href="https://www.getzep.com/blog/lies-damn-lies-statistics-is-mem0-really-sota-in-agent-memory/">《Lies, Damn Lies, &amp; Statistics》</a>反驳，指其图记忆实现与自家方案差距达 34%、时序推理被误判；Letta 团队 2025 年 8 月的<a target="_blank" rel="noopener" href="https://www.letta.com/blog/benchmarking-ai-agent-memory/">基准测试文</a>给出了最扎心的对照——**一个把对话历史存成文件、让 Agent 自己翻的”文件系统基线”，在 LoCoMo 上拿到 74.0%，高于 Mem0 顶级图记忆变体自报的 68.5%**，结论直接写进标题：”Is a Filesystem All You Need?”。而后来者 Hindsight 自报 95.2%，又把所有人踩在脚下。LoCoMo 本身的质量问题也早被多方记录：标注依赖 LLM 打分、部分问题根本没有答案、大量问题并不真正需要长期记忆——榜单测的与其说是”记忆”，不如说是”检索”。</p>
+<p>这给选型者的启示不是”都别用”，而是<strong>评测要自己做</strong>。榜单分数换到你自己的工作负载上几乎没有迁移性；正确姿势是拿你真实的记忆操作（去重、时序、多会话一致性）构造小评测集，把候选方案与”便宜 RAG 基线”和”全上下文基线”一起跑，同时记录延迟与成本。这与<a href="https://blog.shuying.me/2026/09/05/2026-09-05-ai-unit-test-pyramid/">用变异测试给 AI 生成的测试打分</a>是同一个道理：<strong>AI 系统的”看起来很好”必须换成可复现的数字才算数。</strong></p>
+<h2 id="七、三问决策法"><a href="#七、三问决策法" class="headerlink" title="七、三问决策法"></a>七、三问决策法</h2><p><a id="sec-7"></a></p>
+<p>把前文压缩成三个问题，按顺序回答：</p>
+<p><strong>Q1：知识多久变一次？</strong> 以月为单位变（项目规范、架构约定）→ 规则文件。每次会话都在变（用户偏好、任务状态）→ 运行时方案（MCP 记忆服务器或向量库）。注意 AGENTS.md 标准化后，规则文件还是跨工具的公共记忆，优先级应高于直觉。</p>
+<p><strong>Q2：谁来记？</strong> 人来记（团队要审计、要背书）→ 规则文件，git 就是你的记忆审计日志。Agent 来记（个人助理、经验沉淀）→ MCP 记忆服务器，但要配审查机制。管线批量导入历史语料 → 向量库。</p>
+<p><strong>Q3：语料多大？</strong> 单文件塞得下（几十 KB 以内）→ 别犹豫，全量注入最简单可靠。塞不下但单库可控 → MCP 记忆服务器或 RAG 二选一，后者要预算新鲜度维护。多源异构、百万级 → 向量库，并考虑与长上下文混合（滑铁卢综述的结论：混合最优）。</p>
+<figure>
+<svg viewBox="0 0 560 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="决策象限图：横轴知识变化频率，纵轴语料规模，三块区域分别标注规则文件、MCP 记忆服务器、外部向量库">
+  <text x="280" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#1a365d">Agent 记忆选型象限</text>
+  <!-- 坐标轴 -->
+  <line x1="80" y1="330" x2="520" y2="330" stroke="#9ca3af" stroke-width="2"></line>
+  <line x1="80" y1="330" x2="80" y2="50" stroke="#9ca3af" stroke-width="2"></line>
+  <text x="300" y="356" text-anchor="middle" font-size="12" fill="#6b7280">知识变化频率（慢 → 快）</text>
+  <text x="50" y="190" font-size="12" fill="#6b7280" transform="rotate(-90 50 190)" text-anchor="middle">语料规模（小 → 大）</text>
+  <!-- 区域：规则文件 左下 -->
+  <rect x="90" y="215" width="190" height="105" rx="8" fill="#dcfce7" opacity="0.85"></rect>
+  <text x="185" y="255" text-anchor="middle" font-size="14" font-weight="bold" fill="#166534">规则文件</text>
+  <text x="185" y="277" text-anchor="middle" font-size="11" fill="#166534">CLAUDE.md / AGENTS.md</text>
+  <text x="185" y="295" text-anchor="middle" font-size="11" fill="#166534">慢变化 · 要审计 · 小语料</text>
+  <!-- 区域：MCP 中带 -->
+  <rect x="290" y="215" width="110" height="105" rx="8" fill="#dbeafe" opacity="0.85"></rect>
+  <text x="345" y="250" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e40af">MCP 记忆</text>
+  <text x="345" y="272" text-anchor="middle" font-size="11" fill="#1e40af">知识图谱 /</text>
+  <text x="345" y="290" text-anchor="middle" font-size="11" fill="#1e40af">memory bank</text>
+  <!-- 区域：向量库 右上 -->
+  <rect x="300" y="60" width="210" height="140" rx="8" fill="#fef3c7" opacity="0.9"></rect>
+  <text x="405" y="105" text-anchor="middle" font-size="14" font-weight="bold" fill="#92400e">外部向量库 / RAG</text>
+  <text x="405" y="127" text-anchor="middle" font-size="11" fill="#92400e">快变化 · 海量 · 多源</text>
+  <text x="405" y="147" text-anchor="middle" font-size="11" fill="#92400e">需预算新鲜度维护</text>
+  <!-- 混合带提示 -->
+  <rect x="90" y="60" width="200" height="140" rx="8" fill="#f3f4f6" opacity="0.7"></rect>
+  <text x="190" y="118" text-anchor="middle" font-size="12" font-weight="bold" fill="#4b5563">混合带</text>
+  <text x="190" y="140" text-anchor="middle" font-size="11" fill="#4b5563">规则文件管规范</text>
+  <text x="190" y="160" text-anchor="middle" font-size="11" fill="#4b5563">+ 检索管语料</text>
+  <text x="190" y="180" text-anchor="middle" font-size="11" fill="#4b5563">（综述结论：混合最优）</text>
+</svg>
+<figcaption>图 2：三问决策法的可视化。横轴是知识变化频率，纵轴是语料规模；多数真实项目落在混合带——两套机制各管一轴。</figcaption>
+</figure>
+
+<p>对应的决策规则收尾：<strong>选规则文件，如果你的知识以月为单位变化且需要团队审计；选 MCP 记忆服务器，如果记忆由 Agent 自动产生且要跨工具共享；选向量库，如果语料大到注入不可行且你有能力维护新鲜度；而多数成熟项目，最终是”规则文件 + 一种运行时记忆”的混合体。</strong></p>
+<h2 id="八、真实项目复盘：一个发布流水线的记忆选型"><a href="#八、真实项目复盘：一个发布流水线的记忆选型" class="headerlink" title="八、真实项目复盘：一个发布流水线的记忆选型"></a>八、真实项目复盘：一个发布流水线的记忆选型</h2><p><a id="sec-8"></a></p>
+<p>拿我自己在维护的一个博客自动发布流水线（auto-blog）做复盘。它的任务是：从选题池取条目 → 写作 → 部署到 Hexo 博客 → 同步到多平台。跑了几个月、十几篇文章之后回看，它的记忆选型恰好把三条路线都用在了各自的正确位置上。</p>
+<p><strong>选题状态用规则文件。</strong> 选题池是仓库根目录的一个 markdown 文件，每条选题带状态机（候选 → 已确认 → 写作中 → 已部署 → 已同步）。为什么不用数据库？因为这里的需求是<strong>审计与人工把关</strong>：哪次运行改了状态、为什么改，git log 一目了然；人工 check 点就是让我本人对记忆的每次写入负责。这正是规则文件的甜蜜区——变化以天为单位、写入要背书、语料就是这一个文件。</p>
+<p><strong>我的长期偏好用”索引 + 单事实文件”。</strong> 用户的 Claude Code 记忆目录里，一条记忆一个文件（带 frontmatter 的 markdown），外加一个 MEMORY.md 当索引。这是规则文件路线在个人维度的规模化变体：单文件保住”全量注入”的可控性，文件粒度保住”按需读取”的可能性——某条记忆过时了，删一个文件就行，不用在几千行的大文件里做手术。</p>
+<p><strong>外部业务数据用”工具即记忆”。</strong> 工单、文档平台的数据从不复制进任何记忆文件，而是通过 MCP 工具现查。这是第四节那个变体的实践版：真相源留在业务系统，Agent 永远拿最新数据，新鲜度债为零。代价是每次查询有一次工具调用的延迟与鉴权成本——但相比”复制一份然后眼睁睁看它过期”，这笔账划算得多。</p>
+<p>这个流水线至今没有用上向量库，原因就是 Q3：语料规模撑不起基础设施，选题池加记忆文件全部注入也就几十 KB，prompt caching 之下成本可忽略。<strong>三种方案各有正确位置，混用不是妥协，而是把三根轴分别交给最合适的方案。</strong>如果哪天要把几百篇历史文章喂给 Agent 做内容分析，那才是向量库登场的时刻——而且要同时预算它的索引刷新成本。</p>
+<h2 id="九、结论"><a href="#九、结论" class="headerlink" title="九、结论"></a>九、结论</h2><p><a id="sec-9"></a></p>
+<p>横评到此收束成一句话：<strong>记忆选型不是选”最好的方案”，是给三根轴（写入、读取、规模）各找一个匹配的答案。</strong> 规则文件用审计与确定性换来人肉维护的代价；MCP 记忆服务器用自动沉淀换来对写入质量的依赖；向量库用规模换新鲜度债——三条路线的短板恰好是互补的，这也是为什么成熟项目几乎都走向混合。</p>
+<p>给正在起步的读者的行动清单：先把项目约定写成 CLAUDE.md&#x2F;AGENTS.md（成本为零、立刻受益）；需要跨会话个性化时从官方知识图谱服务器起步（一条 npx 命令）；语料过 32KB 或需要检索多源时再评估向量库，并同步预算新鲜度维护；任何方案上马前，用你自己的工作负载跑一组小评测，别信榜单。</p>
+<h2 id="FAQ"><a href="#FAQ" class="headerlink" title="FAQ"></a>FAQ</h2><p><a id="sec-faq"></a></p>
+<h3 id="CLAUDE-md-和-AGENTS-md-到底用哪个？"><a href="#CLAUDE-md-和-AGENTS-md-到底用哪个？" class="headerlink" title="CLAUDE.md 和 AGENTS.md 到底用哪个？"></a>CLAUDE.md 和 AGENTS.md 到底用哪个？</h3><p>用 AGENTS.md，或两者并存。AGENTS.md 已是开放标准（30,000+ 项目采用），Codex、Cursor、Gemini CLI 原生支持，Claude Code 在无 CLAUDE.md 时自动回退读它。只在需要 Claude Code 特有语法（如 <code>@import</code> 引用）时保留一份薄的 CLAUDE.md。</p>
+<h3 id="MCP-记忆服务器会把错误事实一直传播下去吗？"><a href="#MCP-记忆服务器会把错误事实一直传播下去吗？" class="headerlink" title="MCP 记忆服务器会把错误事实一直传播下去吗？"></a>MCP 记忆服务器会把错误事实一直传播下去吗？</h3><p>会，这是该路线的核心风险：写入是自动的，错误也是自动的。缓解手段是把记忆当写操作管理——定期审查记忆内容、保留删除工具、重要事实要求人工确认。官方知识图谱服务器因为是本地 JSON 文件，可以用 git 管起来，等于把两条路线的优点拼在一起。</p>
+<h3 id="向量库方案的新鲜度问题有标准解法吗？"><a href="#向量库方案的新鲜度问题有标准解法吗？" class="headerlink" title="向量库方案的新鲜度问题有标准解法吗？"></a>向量库方案的新鲜度问题有标准解法吗？</h3><p>没有免维护的解法，只有三种成本结构：写入时作废（Mem0 的 ADD&#x2F;UPDATE&#x2F;DELETE 管线，依赖 LLM 提炼质量）、周期性重建索引（刷新成本约 1.54–3.47 倍于单次查询，见 arXiv:2505.01931）、或者像”工具即记忆”那样不存副本、每次现查。数据越重要，越应该考虑最后一种。</p>
+<h3 id="我该用-LoCoMo-分数来选记忆框架吗？"><a href="#我该用-LoCoMo-分数来选记忆框架吗？" class="headerlink" title="我该用 LoCoMo 分数来选记忆框架吗？"></a>我该用 LoCoMo 分数来选记忆框架吗？</h3><p>不该。LoCoMo 上各家口径互相矛盾（Hindsight 自报 95.2%，Mem0 图变体自报 68.5%，而一个文件系统基线就拿了 74.0%），标注质量与 prompt 敏感性问题有据可查。用你自己的记忆操作构造小评测集，把候选方案与”朴素 RAG”和”全上下文”两个便宜基线一起测，同时记录延迟与成本——结论通常比榜单可靠得多。</p>
+
+    </div>
+
+    
+    
+    
+        
+
+<div>
+<ul class="post-copyright">
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>枢影
+  </li>
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="https://blog.shuying.me/2026/11/02/agent-memory-systems-comparison/" title="Agent 记忆系统横评：规则文件、MCP 与外部向量库怎么选">https://blog.shuying.me/2026/11/02/agent-memory-systems-comparison/</a>
+  </li>
+  <li class="post-copyright-license">
+    <strong>版权声明： </strong>本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/zh-CN" rel="noopener" target="_blank"><i class="fab fa-fw fa-creative-commons"></i>BY-NC-SA</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/MCP/" rel="tag"># MCP</a>
+              <a href="/tags/Agent-%E8%AE%B0%E5%BF%86/" rel="tag"># Agent 记忆</a>
+              <a href="/tags/CLAUDE-md/" rel="tag"># CLAUDE.md</a>
+              <a href="/tags/RAG/" rel="tag"># RAG</a>
+              <a href="/tags/%E5%90%91%E9%87%8F%E6%95%B0%E6%8D%AE%E5%BA%93/" rel="tag"># 向量数据库</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/11/01/llm-transformer-for-students/" rel="prev" title="大语言模型是什么？写给中学生的 Transformer 入门">
+      <i class="fa fa-chevron-left"></i> 大语言模型是什么？写给中学生的 Transformer 入门
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E3%80%81%E5%85%88%E6%8A%8A%E9%97%AE%E9%A2%98%E5%AE%9A%E4%B9%89%E6%B8%85%E6%A5%9A%EF%BC%9A%E8%AE%B0%E5%BF%86%E7%9A%84%E4%B8%89%E6%9D%A1%E6%AD%A3%E4%BA%A4%E8%BD%B4"><span class="nav-number">1.</span> <span class="nav-text">一、先把问题定义清楚：记忆的三条正交轴</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%8C%E3%80%81%E5%BF%AB%E9%80%9F%E5%AF%B9%E6%AF%94"><span class="nav-number">2.</span> <span class="nav-text">二、快速对比</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%89%E3%80%81%E6%96%B9%E6%A1%88%E4%B8%80%EF%BC%9A%E8%A7%84%E5%88%99%E6%96%87%E4%BB%B6%E2%80%94%E2%80%94%E6%9C%80%E5%9C%9F%EF%BC%8C%E4%B9%9F%E6%9C%80%E9%9A%BE%E8%A2%AB%E6%9B%BF%E4%BB%A3"><span class="nav-number">3.</span> <span class="nav-text">三、方案一：规则文件——最土，也最难被替代</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9B%E3%80%81%E6%96%B9%E6%A1%88%E4%BA%8C%EF%BC%9AMCP-%E8%AE%B0%E5%BF%86%E6%9C%8D%E5%8A%A1%E5%99%A8%E2%80%94%E2%80%94%E6%8A%8A%E8%AE%B0%E5%BF%86%E5%8D%8F%E8%AE%AE%E5%8C%96"><span class="nav-number">4.</span> <span class="nav-text">四、方案二：MCP 记忆服务器——把记忆协议化</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%94%E3%80%81%E6%96%B9%E6%A1%88%E4%B8%89%EF%BC%9A%E5%A4%96%E9%83%A8%E5%90%91%E9%87%8F%E5%BA%93%E2%80%94%E2%80%94%E8%A7%84%E6%A8%A1%E7%9A%84%E5%A4%A9%E8%8A%B1%E6%9D%BF%EF%BC%8C%E6%96%B0%E9%B2%9C%E5%BA%A6%E7%9A%84%E5%9C%B0%E6%9D%BF"><span class="nav-number">5.</span> <span class="nav-text">五、方案三：外部向量库——规模的天花板，新鲜度的地板</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD%E3%80%81LoCoMo-%E6%A6%9C%E5%8D%95%E5%88%AB%E5%A4%AA%E5%BD%93%E7%9C%9F%EF%BC%9A%E4%B8%80%E5%9C%BA%E5%90%84%E8%AF%B4%E5%90%84%E8%AF%9D%E7%9A%84%E8%AF%84%E6%B5%8B%E6%B7%B7%E6%88%98"><span class="nav-number">6.</span> <span class="nav-text">六、LoCoMo 榜单别太当真：一场各说各话的评测混战</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%83%E3%80%81%E4%B8%89%E9%97%AE%E5%86%B3%E7%AD%96%E6%B3%95"><span class="nav-number">7.</span> <span class="nav-text">七、三问决策法</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AB%E3%80%81%E7%9C%9F%E5%AE%9E%E9%A1%B9%E7%9B%AE%E5%A4%8D%E7%9B%98%EF%BC%9A%E4%B8%80%E4%B8%AA%E5%8F%91%E5%B8%83%E6%B5%81%E6%B0%B4%E7%BA%BF%E7%9A%84%E8%AE%B0%E5%BF%86%E9%80%89%E5%9E%8B"><span class="nav-number">8.</span> <span class="nav-text">八、真实项目复盘：一个发布流水线的记忆选型</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B9%9D%E3%80%81%E7%BB%93%E8%AE%BA"><span class="nav-number">9.</span> <span class="nav-text">九、结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#FAQ"><span class="nav-number">10.</span> <span class="nav-text">FAQ</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#CLAUDE-md-%E5%92%8C-AGENTS-md-%E5%88%B0%E5%BA%95%E7%94%A8%E5%93%AA%E4%B8%AA%EF%BC%9F"><span class="nav-number">10.1.</span> <span class="nav-text">CLAUDE.md 和 AGENTS.md 到底用哪个？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#MCP-%E8%AE%B0%E5%BF%86%E6%9C%8D%E5%8A%A1%E5%99%A8%E4%BC%9A%E6%8A%8A%E9%94%99%E8%AF%AF%E4%BA%8B%E5%AE%9E%E4%B8%80%E7%9B%B4%E4%BC%A0%E6%92%AD%E4%B8%8B%E5%8E%BB%E5%90%97%EF%BC%9F"><span class="nav-number">10.2.</span> <span class="nav-text">MCP 记忆服务器会把错误事实一直传播下去吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%90%91%E9%87%8F%E5%BA%93%E6%96%B9%E6%A1%88%E7%9A%84%E6%96%B0%E9%B2%9C%E5%BA%A6%E9%97%AE%E9%A2%98%E6%9C%89%E6%A0%87%E5%87%86%E8%A7%A3%E6%B3%95%E5%90%97%EF%BC%9F"><span class="nav-number">10.3.</span> <span class="nav-text">向量库方案的新鲜度问题有标准解法吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%88%91%E8%AF%A5%E7%94%A8-LoCoMo-%E5%88%86%E6%95%B0%E6%9D%A5%E9%80%89%E8%AE%B0%E5%BF%86%E6%A1%86%E6%9E%B6%E5%90%97%EF%BC%9F"><span class="nav-number">10.4.</span> <span class="nav-text">我该用 LoCoMo 分数来选记忆框架吗？</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="枢影"
+      src="/images/avatar.png">
+  <p class="site-author-name" itemprop="name">枢影</p>
+  <div class="site-description" itemprop="description">Focus On Android</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">32</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">11</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">53</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SYKernel" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SYKernel" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+  <div class="links-of-blogroll motion-element">
+    <div class="links-of-blogroll-title"><i class="fa fa-link fa-fw"></i>
+      Links
+    </div>
+    <ul class="links-of-blogroll-list">
+        <li class="links-of-blogroll-item">
+          <a href="http://shuying.me/" title="http:&#x2F;&#x2F;shuying.me&#x2F;" rel="noopener" target="_blank">Title</a>
+        </li>
+    </ul>
+  </div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">枢影</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
