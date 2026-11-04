@@ -260,7 +260,7 @@
 <li>协程没让泄漏消失，只是换了形态：生命周期错位的 Job、GlobalScope、不受生命周期约束的 collect、忘 awaitClose 的 callbackFlow，是四类最高频的新模式。</li>
 <li>排查要分层：LeakCanary 回答"谁还攥着这个对象"（引用链），Perfetto 回答"系统水位和压力在哪"（RSS/PSS、<code>rss_high_water_mark</code>、heapprofd native 堆）——两个工具不是替代关系。</li>
 <li>Bitmap 的痛点在 Android 8.0 后已整体移出 Java 堆：今天的战场是硬件位图的取舍与解码策略（inSampleSize、inBitmap），不是 GC。</li>
-<li>16 KB page size（Android 15 起支持；Google Play 兼容性要求 targetSdk 35+ 的应用必须支持）是近年最值得跟的一次底层变更，native 库没适配会在新设备上直接装不上或内存膨胀。</li>
+<li>16 KB page size（Android 15 起支持；Google Play 兼容性要求 targetSdk 35+ 的应用必须支持，2027-02-01 起不兼容的更新无法发布）是近年最值得跟的一次底层变更，native 库没适配会在新设备上直接装不上或内存膨胀。</li>
 </ul></blockquote>
 
 <p class="toc"><strong>本文目录</strong>：<a href="#sec-1">一、ART 十年：每一步都在偿还内存的债</a> · <a href="#sec-2">二、Kotlin 时代：泄漏没消失，只是换了形态</a> · <a href="#sec-3">三、现代排查流：先引用链，后系统水位</a> · <a href="#sec-4">四、大图与大内存：Bitmap 的战场转移</a> · <a href="#sec-5">五、一次真实的排查复盘</a> · <a href="#sec-6">六、五个决定</a> · <a href="#sec-faq">FAQ</a></p>
@@ -286,23 +286,23 @@
   <text x="90" y="170" font-size="11" fill="#6b7280">全堆长停顿退场；Bitmap 像素数据同时移入 native heap</text>
   <!-- node 4 -->
   <circle cx="70" cy="198" r="7" fill="#f59e0b"></circle>
-  <text x="90" y="194" font-size="12" font-weight="bold" fill="#1f2937">Android 9–11：Baseline Profiles 云端下发</text>
+  <text x="90" y="194" font-size="12" font-weight="bold" fill="#1f2937">Android 9–11：Baseline Profiles 云端下发；CC 分代化（10+）</text>
   <text x="90" y="210" font-size="11" fill="#6b7280">官方下发热点清单，冷启动可测量改善</text>
   <!-- node 5 -->
   <circle cx="70" cy="238" r="7" fill="#f59e0b"></circle>
-  <text x="90" y="234" font-size="12" font-weight="bold" fill="#1f2937">Android 12+：Baseline Profiles 本地化 + 分代 CC GC</text>
-  <text x="90" y="250" font-size="11" fill="#6b7280">应用自管热点文件；年轻代单独回收；ART 走 Mainline 可独立更新</text>
+  <text x="90" y="234" font-size="12" font-weight="bold" fill="#1f2937">Android 12+：Baseline Profiles 随 APK 本地分发</text>
+  <text x="90" y="250" font-size="11" fill="#6b7280">应用自管热点文件；ART 走 Mainline 可独立更新</text>
   <!-- node 6 -->
   <circle cx="70" cy="278" r="7" fill="#7c3aed"></circle>
   <text x="90" y="274" font-size="12" font-weight="bold" fill="#1f2937">Android 15（2024）：支持 16 KB page size</text>
   <text x="90" y="290" font-size="11" fill="#6b7280">大页降低页表与 TLB 压力；native 库需重新对齐编译</text>
   <!-- node 7 -->
   <circle cx="70" cy="318" r="7" fill="#7c3aed"></circle>
-  <text x="90" y="314" font-size="12" font-weight="bold" fill="#1f2937">2025.11 起：16 KB page size 对 Play 新提交应用强制</text>
+  <text x="90" y="314" font-size="12" font-weight="bold" fill="#1f2937">2027.02 起：不兼容 16 KB 的应用更新无法发布</text>
   <text x="90" y="330" font-size="11" fill="#6b7280">大页适配从可选项变成门槛</text>
   <!-- bottom summary -->
   <rect x="90" y="352" width="440" height="52" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1"></rect>
-  <text x="310" y="373" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1e40af">三步演进：按需编译（7.0）→ 并发 GC（8.0/12）→ 可更新虚拟机（12+ Mainline）</text>
+  <text x="310" y="373" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#1e40af">三步演进：按需编译（7.0）→ 并发 GC（8.0，10 起分代）→ 可更新虚拟机（12+ Mainline）</text>
   <text x="310" y="392" text-anchor="middle" font-size="11" fill="#475569">每一代都在把"内存相关的停顿与占用"换给更聪明的调度</text>
 </svg>
 </figure>
@@ -337,14 +337,14 @@
 <tr>
 <td>Android 9–11</td>
 <td>2018–2020</td>
-<td>Baseline Profiles 云端下发（Cloud Profiles）</td>
-<td>官方下发热点清单，冷启动与首帧可测量改善</td>
+<td>Baseline Profiles 云端下发（Cloud Profiles）；CC GC 自 10 起扩展出分代回收</td>
+<td>官方下发热点清单，冷启动与首帧可测量改善；年轻代对象可低成本单独回收</td>
 </tr>
 <tr>
 <td>Android 12+</td>
 <td>2021 起</td>
-<td>Baseline Profiles 本地生成；分代 CC GC；ART 走 Mainline（ART Modules）</td>
-<td>应用自管热点文件；年轻代单独回收；虚拟机本身可以不跟 OTA 更新</td>
+<td>Baseline Profiles 随 APK 本地分发；ART 走 Mainline（ART Modules）</td>
+<td>应用自管热点文件；虚拟机本身可以不跟 OTA 更新</td>
 </tr>
 <tr>
 <td>Android 15</td>
@@ -353,15 +353,15 @@
 <td>大页降低页表与 TLB 压力，native 库需重新编译适配</td>
 </tr>
 <tr>
-<td>2025–2026</td>
+<td>2026</td>
 <td>—</td>
-<td>16 KB page size 对 Play 新提交应用强制；后续 ART 特性随 Mainline 滚动</td>
+<td>16 KB 兼容为 Play 要求，2027-02-01 起不兼容的更新无法发布</td>
 <td>适配不再是可选项</td>
 </tr>
 </tbody></table>
 <p>（版本与特性出处：<a target="_blank" rel="noopener" href="https://source.android.com/docs/core/runtime/configure">Android 8.0 行为变更与 ART 文档</a>、<a target="_blank" rel="noopener" href="https://developer.android.com/topic/performance/baselineprofiles/overview">Baseline Profiles 官方文档</a>、<a target="_blank" rel="noopener" href="https://developer.android.com/guide/practices/page-sizes">16 KB page size 官方指南</a>，检索于 2026-11-04。）</p>
 <p><strong>变化一：编译策略，从”一次全编”到”按需热编”。</strong> Android 5.0 的全量 AOT 是拿”安装时间 + 存储空间”换”运行速度”——应用装一次，全部字节码变机器码。Android 7.0 换成 JIT + AOT 混合：刚安装的应用先以解释 + JIT 跑，跑的过程中记录”哪些方法被频繁执行”（profile），设备空闲时 dex2oat 只对热点做 AOT 编译，产物比全量 AOT 小得多。这是典型的把”不区分冷热的全量工作”换成”语义感知的按需工作”。沿这条线走到 Android 12，<a target="_blank" rel="noopener" href="https://developer.android.com/topic/performance/baselineprofiles/overview">Baseline Profiles</a> 把编译时机进一步前移：应用在构建期自己产出热点清单（用户首次启动前最常走的代码路径），随 APK 一起安装，首帧之前就把关键路径编译好——官方给出的数字是：含入的代码路径自首次启动起执行速度提升约 30%。</p>
-<p><strong>变化二：GC，从”全堆停顿”到”并发复制”。</strong> （一）里讲的分代假设（大多数对象朝生夕死）在 ART 上一直成立，但老版本 ART 对老年代的回收是接近全停顿的标记整理。Android 8.0 起的并发复制 GC（CC GC）把重活搬进并发阶段：后台线程边跑应用边做可达性标记，只有极短的暂停用来切换状态与复制根集附近的对象；<a target="_blank" rel="noopener" href="https://source.android.com/docs/core/runtime/gc-debug">ART 官方文档</a>对 barrier 与阻塞阶段的描述是毫秒级。Android 12 再补一刀分代化：年轻代对象单独进 nursery，Minor collection 只扫年轻代——把（一）讲的分代假设重新用到极致。对开发者，这意味着”GC 停顿导致掉帧”的叙事发生了变化：全堆 Full GC 式的长停顿基本退场，真正扎手的是分配速率过高带来的”GC 太频繁”和之后第三节要讲的 native 侧水位。</p>
+<p><strong>变化二：GC，从”全堆停顿”到”并发复制”。</strong> （一）里讲的分代假设（大多数对象朝生夕死）在 ART 上一直成立，但老版本 ART 对老年代的回收是接近全停顿的标记整理。Android 8.0 起的并发复制 GC（CC GC）把重活搬进并发阶段：后台线程边跑应用边做可达性标记，只有极短的暂停用来切换状态与复制根集附近的对象；分代化也在同一时期补上——<a target="_blank" rel="noopener" href="https://source.android.com/docs/core/runtime/gc-debug">ART 官方文档</a>写明 CC 自 Android 10 起扩展为分代 GC，年轻对象（往往很快不可达）以极低成本单独回收，明显推迟全堆 GC 的到来，把（一）讲的分代假设落到了 CC 的实现里。对开发者，这意味着”GC 停顿导致掉帧”的叙事发生了变化：全堆 Full GC 式的长停顿基本退场，真正扎手的是分配速率过高带来的”GC 太频繁”和之后第三节要讲的 native 侧水位。</p>
 <p><strong>变化三：虚拟机自己变得可更新了。</strong> Android 12 起 ART 走 Mainline（<a target="_blank" rel="noopener" href="https://source.android.com/docs/core/ota/modular-system">模块化系统文档</a>），虚拟机的修复与新特性可以随 Play 系统更新下发，不必等整个系统 OTA。这直接改变了”Android 版本 &#x3D; ART 能力”的旧等式：同一台 Android 12 设备，一年后的 ART 可能已经加了新的 GC 调优或 dexopt 策略。对内存管理这个话题，它意味着 ART 行为差异排查要带上”ART 模块版本”这个新维度。</p>
 <h2 id="二、Kotlin-时代：泄漏没消失，只是换了形态"><a href="#二、Kotlin-时代：泄漏没消失，只是换了形态" class="headerlink" title="二、Kotlin 时代：泄漏没消失，只是换了形态"></a>二、Kotlin 时代：泄漏没消失，只是换了形态</h2><p><a id="sec-2"></a></p>
 <p>GC 判定”对象能不能回收”的规则没变：从 GC Roots 出发画引用链，不可达即回收（（一）讲过）。泄漏的本质永远是”该断的引用没断”。变的只是写法——下面四类模式，覆盖了我近几年 review 和排查里见到的绝大多数 Kotlin 层泄漏。</p>
@@ -475,7 +475,7 @@
 <figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">dependencies &#123;</span><br><span class="line">    debugImplementation(<span class="string">&quot;com.squareup.leakcanary:leakcanary-android:2.14&quot;</span>)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <p>stable 版本线是 2.14；3.0 系列已进入 alpha（截至 2026-06 最新为 3.0-alpha-9，<a target="_blank" rel="noopener" href="https://github.com/square/leakcanary/releases">GitHub releases</a>），仓库 30,000+ star，生产集成仍建议走 2.14。</p>
-<p>工作原理四步：<code>ObjectWatcher</code> watch 关键对象（Activity、Fragment、ViewModel、View、Service 的销毁事件自动注册）→ 期待的时间点过后对象仍在，触发一次 GC 复核 → 仍在就 dump hprof → Shark 在进程内解析出”从 GC Roots 到泄漏对象”的最短引用链，直接在通知栏展示。它回答的是<strong>点</strong>的问题：谁攥着谁。配合本文第二节，四类新模式在 LeakCanary 报告里的长相都很典型——<code>mRepo</code> 里的 <code>scope$job</code>、<code>callbackFlow</code> 的 channel、<code>SharedFlow</code> 的 replay cache。</p>
+<p>工作原理四步：<code>ObjectWatcher</code> watch 关键对象（Activity、Fragment、ViewModel、View、Service 的销毁事件自动注册）→ 期待的时间点过后对象仍在，触发一次 GC 复核 → 仍在就 dump hprof → Shark 在进程内解析出”从 GC Roots 到泄漏对象”的最短引用链，直接在通知栏展示。它回答的是<strong>点</strong>的问题：谁攥着谁。收益有官方背书：<a target="_blank" rel="noopener" href="https://square.github.io/leakcanary/fundamentals/">LeakCanary 文档</a>记录，Square Point of Sale 首次启用 LeakCanary 后修复多处泄漏，OOM 崩溃率下降 94%。配合本文第二节，四类新模式在 LeakCanary 报告里的长相都很典型——<code>mRepo</code> 里的 <code>scope$job</code>、<code>callbackFlow</code> 的 channel、<code>SharedFlow</code> 的 replay cache。</p>
 <p><strong>第二层：Perfetto 看系统水位。</strong> LeakCanary 说不出”应用整体内存是涨是跌、是 Java 还是 native、系统有没有压力”——这是 Perfetto 的地盘。抓一次带内存数据源的 trace：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">adb shell perfetto \</span><br><span class="line">  -c - --time 30s -o /data/misc/perfetto-traces/mem.pftrace &lt;&lt;<span class="string">EOF</span></span><br><span class="line"><span class="string">buffers: &#123; size_kb: 65536 &#125;</span></span><br><span class="line"><span class="string">data_sources: &#123; config &#123; name: &quot;linux.meminfo&quot; &#125; &#125;</span></span><br><span class="line"><span class="string">data_sources: &#123; config &#123; name: &quot;android.memory.rss_high_water_mark&quot; &#125; &#125;</span></span><br><span class="line"><span class="string">data_sources: &#123; config &#123; name: &quot;android.heapprofd&quot; &#125; &#125;</span></span><br><span class="line"><span class="string">EOF</span></span><br></pre></td></tr></table></figure>
 
@@ -484,11 +484,11 @@
 <h2 id="四、大图与大内存：Bitmap-的战场转移"><a href="#四、大图与大内存：Bitmap-的战场转移" class="headerlink" title="四、大图与大内存：Bitmap 的战场转移"></a>四、大图与大内存：Bitmap 的战场转移</h2><p><a id="sec-4"></a></p>
 <p>（一）写作时，”Bitmap 占爆 Java 堆”还是高频线上问题；Android 8.0 之后，像素数据的存放位置从 Java heap 挪到了 native heap（<a target="_blank" rel="noopener" href="https://developer.android.com/topic/performance/graphics/manage-memory">官方说明</a>），OOM 的形态也随之改变：不再是在 Java 堆里拼 <code>OutOfMemoryError</code>，而是 native 侧直接触顶。</p>
 <p><strong>硬件位图是这波迁移的延续。</strong> <code>Bitmap.Config.HARDWARE</code> 把像素数据只存在 GPU 显存里，CPU 侧只剩一个引用句柄——绘制快、内存省，但有明确边界：不能在 CPU 侧读回像素（<code>getPixels</code> 会抛异常）、不能用于需要 CPU 访问的场合（Canvas 软件绘制、部分自绘特效）。Coil 与 Glide 在满足条件时默认启用硬件位图，这也是”升级图片库后一些效果突然报错”的最常见原因。</p>
-<p><strong>解码策略仍然是基本功。</strong> 展示 1080x1920 的图到 108x192 的 ImageView，直接解码就是 7.6 MB 起步的内存：</p>
+<p><strong>解码策略仍然是基本功。</strong> 展示 1080x1920 的图到 108x192 的 ImageView，按 4 字节&#x2F;像素直接解码就是约 8 MB 起步的内存：</p>
 <figure class="highlight kotlin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">val</span> opts = BitmapFactory.Options().apply &#123; inJustDecodeBounds = <span class="literal">true</span> &#125;</span><br><span class="line">BitmapFactory.decodeFile(path, opts)                     <span class="comment">// 先只读尺寸</span></span><br><span class="line">opts.inSampleSize = calcInSampleSize(opts, reqW, reqH)   <span class="comment">// 2 的幂，按目标尺寸算</span></span><br><span class="line">opts.inJustDecodeBounds = <span class="literal">false</span></span><br><span class="line">BitmapFactory.decodeFile(path, opts)                     <span class="comment">// 再真解码</span></span><br></pre></td></tr></table></figure>
 
-<p>进阶的 <code>inBitmap</code> 复用（新 Bitmap 复用旧位图的内存块）在图片列表场景能把分配抖动压掉一截，但要求尺寸兼容，交给图片库处理比自己管省心。</p>
-<p><strong>16 KB page size 是图像与 native 库的新变量。</strong> Android 15 起支持；<a target="_blank" rel="noopener" href="https://developer.android.com/guide/practices/page-sizes">官方指南</a>写明 Google Play 兼容性要求：targetSdk 35+（Android 15 及以上）的应用必须支持 16 KB 内存页。内存页变大后，页表项减少、TLB 命中率上升，内存密集型应用整体受益，但所有含 native 代码的库必须按 16 KB 对齐重新编译，否则在启用大页的设备上无法安装或运行。</p>
+<p>进阶的 <code>inBitmap</code> 复用（新 Bitmap 复用旧位图的内存块）在图片列表场景能把分配抖动压掉一截，但要求尺寸兼容，交给图片库处理比自己管省心。官方文档给过一组直观的量化：一张 2048x1536 的图以 ARGB_8888 全图解码约 12 MB，按目标尺寸取 <code>inSampleSize=4</code> 后解码到 512x384，只要约 0.75 MB（<a target="_blank" rel="noopener" href="https://developer.android.com/topic/performance/graphics/load-bitmap">加载大图官方指南</a>）——16 倍的差距全部来自”要不要按显示尺寸解码”这一件事。</p>
+<p><strong>16 KB page size 是图像与 native 库的新变量。</strong> Android 15 起支持 16 KB 内存页设备；<a target="_blank" rel="noopener" href="https://developer.android.com/guide/practices/page-sizes">官方指南</a>写明 Google Play 兼容性要求：targetSdk 35+（Android 15 及以上）的应用必须支持 16 KB 内存页，且自 2027 年 2 月 1 日起，不兼容 16 KB 的应用更新将无法发布。内存页变大后，页表项减少、TLB 命中率上升——官方实测给出的是一组不大的净收益：内存压力下应用启动时间平均降低 3.16%、启动功耗降低 4.56%、相机冷启动快 6.60%、系统启动时间提升约 8%。但所有含 native 代码的库必须按 16 KB 对齐重新编译，否则在启用大页的设备上无法安装或运行。</p>
 <h2 id="五、一次真实的排查复盘"><a href="#五、一次真实的排查复盘" class="headerlink" title="五、一次真实的排查复盘"></a>五、一次真实的排查复盘</h2><p><a id="sec-5"></a></p>
 <p>把一个图片详情页从 Handler 回调迁移到协程，结果迁移完一压测就漏——这个复盘里第二节的四个模式占了两个。</p>
 <p><strong>现象</strong>：反复进出详情页十几次后，Profiler 里 <code>DetailFragment</code> 实例数稳步上涨，滑动开始掉帧。代码表面上看没有任何问题：collect 用了 <code>lifecycleScope</code>，页面销毁 scope 会取消——教科书式的”正确”写法。</p>
@@ -509,7 +509,7 @@
 <h3 id="RSS、PSS、USS-三个指标到底看哪个？"><a href="#RSS、PSS、USS-三个指标到底看哪个？" class="headerlink" title="RSS、PSS、USS 三个指标到底看哪个？"></a>RSS、PSS、USS 三个指标到底看哪个？</h3><p>看你要回答什么问题。RSS（常驻内存）把共享库整份计入，多进程环境会虚高，只适合粗看趋势；PSS（按比例分摊）把共享内存按进程数分摊，是 Play Vitals 和大多数”应用内存大盘”的口径，日常监控用它；USS（私有内存）只算进程独占的部分，归因”这个进程自己多吃了多少”时最准。Perfetto 的 <code>linux.meminfo</code> 面板三者都有，建议固定口径看趋势、换口径做归因，别跨口径比较。</p>
 <h3 id="LeakCanary-报的泄漏都是真泄漏吗？"><a href="#LeakCanary-报的泄漏都是真泄漏吗？" class="headerlink" title="LeakCanary 报的泄漏都是真泄漏吗？"></a>LeakCanary 报的泄漏都是真泄漏吗？</h3><p>绝大多数是，但有需要判断的灰区。它的机制是”对象该回收了却还在 → 触发 GC 复核 → 还在才 dump”，误报的常见来源是缓存策略：<code>LruCache</code> 故意保留的最近条目、按设计常驻的单例，出现在报告里不代表错，只代表”这个对象的生命周期比 LeakCanary 预设的短”。处理原则：Activity、Fragment、View、ViewModel 的泄漏一律当真并必修；缓存类对象的报告结合保留策略评估；拿不准时看引用链里有没有”预期之外”的中间环节——有的话基本就是第二节里哪一类模式。</p>
 <h3 id="内存优化先做哪件事收益最大？"><a href="#内存优化先做哪件事收益最大？" class="headerlink" title="内存优化先做哪件事收益最大？"></a>内存优化先做哪件事收益最大？</h3><p>按投入产出排序：第一步接 LeakCanary，抓现成泄漏，零成本白捡的收益；第二步看图片——图像几乎永远是应用内存的最大单项，图片库默认配置 + 解码尺寸匹配就能解决大半；第三步才是分配速率层面的微优化（复用、避免热路径每帧分配）。GC 参数调优放在最后，因为应用层基本没有 ART GC 参数可调，你能做的是”让它少干活”。</p>
-<h3 id="16-KB-page-size-对已有应用意味着什么？"><a href="#16-KB-page-size-对已有应用意味着什么？" class="headerlink" title="16 KB page size 对已有应用意味着什么？"></a>16 KB page size 对已有应用意味着什么？</h3><p>分两种情况。纯 Kotlin&#x2F;Java 应用（不含自己编译的 native 代码）无需任何动作，系统自动适配。含 native 库（自研 so 或第三方 SDK）的应用必须让所有 so 按 16 KB 对齐重新编译——Google Play 兼容性要求 targetSdk 35+ 的应用必须支持 16 KB，不达标的新版本将无法满足上架要求，在启用大页的设备上也可能直接安装失败。官方提供了检查工具与迁移文档（developer.android.com&#x2F;guide&#x2F;practices&#x2F;page-sizes），迁移本身通常只是改编译配置，难点在依赖链里第三方 SDK 的版本跟进。</p>
+<h3 id="16-KB-page-size-对已有应用意味着什么？"><a href="#16-KB-page-size-对已有应用意味着什么？" class="headerlink" title="16 KB page size 对已有应用意味着什么？"></a>16 KB page size 对已有应用意味着什么？</h3><p>分两种情况。纯 Kotlin&#x2F;Java 应用（不含自己编译的 native 代码）无需任何动作，系统自动适配。含 native 库（自研 so 或第三方 SDK）的应用必须让所有 so 按 16 KB 对齐重新编译——Google Play 兼容性要求 targetSdk 35+ 的应用必须支持 16 KB，且自 2027 年 2 月 1 日起不兼容的应用更新将无法发布，在启用大页的设备上也可能直接安装失败。官方提供了检查工具与迁移文档（developer.android.com&#x2F;guide&#x2F;practices&#x2F;page-sizes），迁移本身通常只是改编译配置，难点在依赖链里第三方 SDK 的版本跟进。</p>
 <h3 id="GC-调优还有必要吗？"><a href="#GC-调优还有必要吗？" class="headerlink" title="GC 调优还有必要吗？"></a>GC 调优还有必要吗？</h3><p>JVM 时代那套”调 GC 参数”的思路在 Android 上基本不适用：ART 的 GC 策略由系统与 ART 模块决定，应用层几乎拿不到调节旋钮。实践中的”GC 调优”只剩一件事——降低分配速率：对象池复用、避免 onDraw&#x2F;高频回调里创建对象、大对象走专门路径（比如上一节的 inBitmap 复用）。分配速率下来了，无论是并发复制 GC 还是分代 Minor collection，触发频率都会自然下降。</p>
 
     </div>
